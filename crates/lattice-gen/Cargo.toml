@@ -1,0 +1,19 @@
+[package]
+name = "lattice-gen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "SDF-based lattice generation. Unit cell topologies + Woodward's seven-stage pipeline, CPU reference. No GPU dependency."
+
+[dependencies]
+sdf = { path = "../sdf" }
+glam = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

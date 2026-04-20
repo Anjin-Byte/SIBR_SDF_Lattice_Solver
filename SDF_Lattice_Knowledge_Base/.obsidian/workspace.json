@@ -1,0 +1,234 @@
+{
+  "main": {
+    "id": "2db982fae2852b99",
+    "type": "split",
+    "children": [
+      {
+        "id": "91c6dbbd4b3f0e00",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "771ed7d06efa49dd",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
+          }
+        ]
+      },
+      {
+        "id": "8a15eca112f669dc",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "48fc8c37652b893c",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "77186f81cbb75986",
+    "type": "split",
+    "children": [
+      {
+        "id": "5da65a36bcb12876",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "54bf4fc5fb8d95a1",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "43dea5d49487cc3c",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "08026c5823931234",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "5f2f1046da16a169",
+    "type": "split",
+    "children": [
+      {
+        "id": "9f14dd9db7cbde38",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f6a56bc19d01d440",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "58e596694c73b0bd",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "b07de8d26132a143",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "09563db8d49c20b7",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "73c0cec6a254a057",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "48fc8c37652b893c",
+  "lastOpenFiles": [
+    "Architecture/Crates/lattice-gen crate.md",
+    "Architecture/Crates/sdf crate.md",
+    "Domain Knowledge/AM Platforms.md",
+    "Domain Knowledge/GPU Compute Pipeline.md",
+    "Domain Knowledge/Mesh Decimation.md",
+    "Domain Knowledge/SDF vs Mesh Booleans.md",
+    "Domain Knowledge/Isosurface Extraction Methods.md",
+    "Domain Knowledge/Meshing Complexity Analysis.md",
+    "Domain Knowledge/Pressure Drop Correlation.md",
+    "Domain Knowledge/Printing Artifacts and Compensation.md",
+    "Domain Knowledge/Unit Cell Topologies.md",
+    "Domain Knowledge/Lattice Generation Pipeline.md",
+    "Domain Knowledge/SDF Primitives Catalog.md",
+    "Domain Knowledge/Three-Layer Stack.md",
+    "Domain Knowledge/Domain Knowledge MOC.md",
+    "Domain Knowledge",
+    "Engineering Philosophy/Principles/Principles Index.md",
+    "Engineering Philosophy/Principles/Reasoning Beside Code.md",
+    "Engineering Philosophy/Principles/Explicit Not Magical.md",
+    "Engineering Philosophy/Principles/Regression Discipline.md",
+    "Engineering Philosophy/Principles/Sharp Oracles.md",
+    "Engineering Philosophy/Principles/Tests Should Make Programs Fail.md",
+    "Engineering Philosophy/Principles/Normal Usage Is Not Testing.md",
+    "Engineering Philosophy/Principles/Reason About Correctness.md",
+    "Engineering Philosophy/Principles/Human Understanding First.md",
+    "Engineering Philosophy/Output Format.md",
+    "Engineering Philosophy/Engineering Philosophy MOC.md",
+    "Engineering Philosophy/Principles",
+    "Engineering Philosophy",
+    "Rust Practices/Type-Driven Design",
+    "Rust Practices/Tooling and Quality",
+    "Rust Practices/Testing",
+    "Rust Practices/Ownership and Mutation",
+    "Rust Practices/Functions and Data",
+    "Rust Practices/Foundational",
+    "Rust Practices/Error Handling"
+  ]
+}

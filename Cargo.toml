@@ -1,0 +1,63 @@
+[workspace]
+members = ["crates/*"]
+default-members = ["crates/cli"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Math
+glam = { version = "0.29", default-features = false, features = ["std"] }
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+
+# Test-only
+proptest = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Reserved for later phases; not yet depended on:
+# wgpu = "..."
+# winit = "..."
+# pollster = "..."
+# bytemuck = { version = "1", features = ["derive"] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+# Catch footguns
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
+# Pedantry at low priority so specific lints can override
+pedantic = { level = "warn", priority = -1 }
+
+# Relaxed pedantic lints (noisy without value)
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.dev]
+opt-level = 1
+debug = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+debug = 1
