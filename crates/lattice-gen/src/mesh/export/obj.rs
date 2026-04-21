@@ -26,7 +26,7 @@ use crate::mesh::Mesh;
 /// OBJ faces are **1-indexed**. We add 1 to every index we emit. A regression
 /// test pins this convention.
 pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
-    writeln!(writer, "# SIBR SDF Lattice Solver")?;
+    writeln!(writer, "# SIBR SDF Lattice Generator")?;
     writeln!(
         writer,
         "# {} vertices, {} triangles",

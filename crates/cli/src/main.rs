@@ -1,4 +1,4 @@
-//! `sibr-solver` — command-line interface for SDF-based lattice generation.
+//! `sibr-lattice` — command-line interface for SDF-based lattice generation.
 //!
 //! This crate is a thin orchestration layer over [`lattice_gen`]. It parses
 //! arguments, constructs a validated [`lattice_gen::LatticeJob`], runs the

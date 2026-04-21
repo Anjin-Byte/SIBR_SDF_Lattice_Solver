@@ -1,5 +1,5 @@
 [package]
-name = "sibr-solver"
+name = "sibr-lattice"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ rust-version.workspace = true
 description = "CLI for SDF-based lattice generation. Thin orchestration over the sdf and lattice-gen crates."
 
 [[bin]]
-name = "sibr-solver"
+name = "sibr-lattice"
 path = "src/main.rs"
 
 [dependencies]

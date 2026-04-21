@@ -60,13 +60,13 @@ jobs:
       - run: cargo test -p lattice-gen --all-targets
 
   test-cli:
-    name: Test — sibr-solver (cli)
+    name: Test — sibr-lattice (cli)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -p sibr-solver --all-targets
+      - run: cargo test -p sibr-lattice --all-targets
 
   test-xtask:
     name: Test — xtask

@@ -551,7 +551,7 @@ mod tests {
     #[test]
     fn regression_default_topology_is_cubic() {
         let args = Args::try_parse_from([
-            "sibr-solver",
+            "sibr-lattice",
             "--primitive",
             "cube",
             "--half-extents",
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn parse_cell_topology_kelvin_spelling() {
         let args = Args::try_parse_from([
-            "sibr-solver",
+            "sibr-lattice",
             "--primitive",
             "cube",
             "--half-extents",
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn parse_cell_topology_bccxy_spelling() {
         let args = Args::try_parse_from([
-            "sibr-solver",
+            "sibr-lattice",
             "--primitive",
             "cube",
             "--half-extents",

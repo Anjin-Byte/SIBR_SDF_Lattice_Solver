@@ -12,7 +12,7 @@
 #   deliverables/remesh/classic/*.stl   — decimated, slicer-ready
 #
 # Usage (from workspace root):
-#   ./scripts/build_classic_deliverables.sh
+#   ./scripts/build_some_stuff.sh
 #
 # Estimated wall time on this machine: ~3 minutes of tool execution + cargo
 # compile time (cached after first run).
@@ -29,22 +29,22 @@ CYL="--primitive cylinder --cylinder-start 0,0,0 --cylinder-end 0,0,50 --cylinde
 COMMON="--grid-ratio 3 --extraction-method classic --smooth-iterations 15"
 
 echo "=== [1/4] Classic MC: Kelvin L=3, r*=0.1 ==="
-cargo run --release -q -p sibr-solver -- $CYL \
+cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology kelvin --cell-length 3 --strut-radius 0.3 \
   $COMMON -o deliverables/classic/kelvin_L3_rstar0.1.stl
 
 echo "=== [2/4] Classic MC: Kelvin L=2, r*=0.08 ==="
-cargo run --release -q -p sibr-solver -- $CYL \
+cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology kelvin --cell-length 2 --strut-radius 0.16 \
   $COMMON -o deliverables/classic/kelvin_L2_rstar0.08.stl
 
 echo "=== [3/4] Classic MC: BccXy L=3, r*=0.1 ==="
-cargo run --release -q -p sibr-solver -- $CYL \
+cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology bccxy --cell-length 3 --strut-radius 0.3 \
   $COMMON -o deliverables/classic/bccxy_L3_rstar0.1.stl
 
 echo "=== [4/4] Classic MC: BccXy L=2, r*=0.08 ==="
-cargo run --release -q -p sibr-solver -- $CYL \
+cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology bccxy --cell-length 2 --strut-radius 0.16 \
   $COMMON -o deliverables/classic/bccxy_L2_rstar0.08.stl
 

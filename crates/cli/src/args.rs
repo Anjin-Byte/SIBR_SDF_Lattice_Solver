@@ -10,7 +10,7 @@ use glam::Vec3;
 
 /// Generate an SDF-based lattice mesh and write it to a file.
 #[derive(Debug, Parser)]
-#[command(name = "sibr-solver", version, about)]
+#[command(name = "sibr-lattice", version, about)]
 #[command(group(
     ArgGroup::new("mesh_resolution")
         .required(true)

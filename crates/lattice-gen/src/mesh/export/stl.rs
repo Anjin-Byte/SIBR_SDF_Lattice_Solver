@@ -65,7 +65,7 @@ pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
 
     // Header: 80 bytes, zero-filled except for a short description.
     let mut header = [0_u8; 80];
-    let desc = b"SIBR SDF Lattice Solver";
+    let desc = b"SIBR SDF Lattice Generator";
     header[..desc.len()].copy_from_slice(desc);
     writer.write_all(&header)?;
 

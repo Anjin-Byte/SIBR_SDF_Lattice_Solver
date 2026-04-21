@@ -1,4 +1,4 @@
-# SIBR SDF Lattice Solver
+# SIBR SDF Lattice Generator
 
 Rust CLI for generating printable lattice meshes via signed-distance functions. Supports cubic, Kelvin, and BccXy unit cells on cube and cylinder primitives; produces STL/OBJ through a CPU-only marching-cubes pipeline with Taubin smoothing and optional QEM decimation.
 
@@ -12,7 +12,7 @@ Requires Rust 1.85+ (2024 edition). From the workspace root:
 cargo build --release
 ```
 
-First build fetches a handful of crates and compiles `meshoptimizer` from source — takes a minute or two. After that, the binary is at `target/release/sibr-solver`.
+First build fetches a handful of crates and compiles `meshoptimizer` from source — takes a minute or two. After that, the binary is at `target/release/sibr-lattice`.
 
 Output examples below write into `out/`, which is gitignored; create it once:
 
@@ -25,7 +25,7 @@ mkdir -p out
 **Smallest thing that produces output** — cubic lattice in a 10 mm cube, meshes in <1 s:
 
 ```sh
-cargo run --release -p sibr-solver -- \
+cargo run --release -p sibr-lattice -- \
   --primitive cube --half-extents 5,5,5 \
   --cell-topology cubic --cell-length 2 --strut-radius 0.2 \
   --grid-ratio 3 \
@@ -35,7 +35,7 @@ cargo run --release -p sibr-solver -- \
 **Printable Kelvin cylinder** — 17 mm radius × 50 mm tall, ~8 s on one core:
 
 ```sh
-cargo run --release -p sibr-solver -- \
+cargo run --release -p sibr-lattice -- \
   --primitive cylinder \
   --cylinder-start 0,0,0 --cylinder-end 0,0,50 --cylinder-radius 17 \
   --cell-topology kelvin --cell-length 3 --strut-radius 0.3 \
@@ -55,7 +55,7 @@ cargo run --release -p xtask -- remesh \
 
 QEM (Garland & Heckbert, via `meshoptimizer`) with a sub-printer-resolution error bound. Topology-preserving; manifold-safe.
 
-For a batch pipeline covering four representative cylinder configs, see [`scripts/build_classic_deliverables.sh`](scripts/build_classic_deliverables.sh).
+For a batch pipeline covering four representative cylinder configs, see [`scripts/build_some_stuff.sh`](scripts/build_some_stuff.sh).
 
 ## Flags worth knowing
 
@@ -71,7 +71,7 @@ For a batch pipeline covering four representative cylinder configs, see [`script
 
 - **`crates/sdf`** — SDF primitives and combinators. Type-level exact-vs-bound precision tracking: composing a bound SDF into a position that requires exactness is a compile error.
 - **`crates/lattice-gen`** — unit cells, `LatticeJob`, marching cubes, welding, Taubin smoothing, STL/OBJ export. CPU-only; no GPU dependency.
-- **`crates/cli`** — the `sibr-solver` binary. Thin orchestration over `lattice-gen`.
+- **`crates/cli`** — the `sibr-lattice` binary. Thin orchestration over `lattice-gen`.
 - **`crates/xtask`** — post-processing tools. Currently `remesh` (QEM decimation).
 
 ## Tests
