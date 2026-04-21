@@ -10,13 +10,23 @@
 //! (primitive shape + unit cell + strut radius), it returns an `ExactSdf`
 //! representing the tiled-and-trimmed lattice body.
 //!
-//! # Phase 1a scope
+//! # Current topology support
 //!
-//! - **Cubic unit cell only.** Other topologies (Kelvin, `BCCxy`, Rhombic
-//!   Dodecahedron, Weaire-Phelan) arrive in later phases.
+//! - **Cubic**, **Kelvin** (truncated octahedron), and **`BCCxy`** (vertex
+//!   octahedron) unit cells. Remaining topologies from the Woodward paper
+//!   (Rhombic Dodecahedron, Weaire-Phelan, curved-beam demo cells) arrive
+//!   in later phases.
 //! - **Cube and Cylinder primitive shapes.** Arbitrary user-supplied SDF
 //!   primitives arrive later.
 //! - **Uniform strut radius.** Functionally graded radius arrives later.
+//!
+//! # Property-query coverage
+//!
+//! [`LatticeJob::open_porosity`], [`LatticeJob::window_diameter`], and
+//! [`LatticeJob::specific_surface_area`] currently have closed-form
+//! implementations only for the cubic topology. Calling them on a Kelvin
+//! or `BCCxy` job panics via `todo!`. Deferred to a Phase-2 follow-up; the
+//! CLI only logs these for cubic jobs.
 //!
 //! # Phase 1c+1d additions
 //!

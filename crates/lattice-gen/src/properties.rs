@@ -50,12 +50,24 @@ impl LatticeJob {
     /// Correction terms from cylinder-cylinder and hemisphere intersections
     /// are `O((r*)³)` and are not currently included; see the module-level
     /// docs for rationale.
+    ///
+    /// # Panics
+    ///
+    /// Panics with `todo!` on `UnitCell::Kelvin` and `UnitCell::BccXy` —
+    /// closed-form porosity formulas for these topologies are deferred to a
+    /// Phase-2 follow-up. See
+    /// `SDF_Lattice_Knowledge_Base/Domain Knowledge/Pressure Drop Correlation.md`
+    /// for the Kelvin/tetrakaidecahedron precedent.
     pub fn open_porosity(&self) -> f32 {
         match self.cell() {
             UnitCell::Cubic { length } => {
                 let r_star = self.strut().radius() / length;
                 1.0 - 3.0 * PI * r_star * r_star
             }
+            UnitCell::Kelvin { .. } | UnitCell::BccXy { .. } => todo!(
+                "Phase 2 — closed-form open_porosity for Kelvin / BccXy topologies \
+                 (see Pressure Drop Correlation.md for the Kelvin precedent)"
+            ),
         }
     }
 
@@ -72,9 +84,17 @@ impl LatticeJob {
     /// ```
     ///
     /// Same unit as [`UnitCell::length`] (mm).
+    ///
+    /// # Panics
+    ///
+    /// Panics with `todo!` on `UnitCell::Kelvin` and `UnitCell::BccXy` —
+    /// deferred to a Phase-2 follow-up.
     pub fn window_diameter(&self) -> f32 {
         match self.cell() {
             UnitCell::Cubic { length } => length - 2.0 * self.strut().radius(),
+            UnitCell::Kelvin { .. } | UnitCell::BccXy { .. } => todo!(
+                "Phase 2 — closed-form window_diameter for Kelvin / BccXy topologies"
+            ),
         }
     }
 
@@ -92,9 +112,17 @@ impl LatticeJob {
     /// Units: inverse length (1/mm). Used in [`LatticeJob::hydraulic_diameter`]
     /// and in the Inayat pressure-drop correlation via the dimensionless
     /// form `S_v-geo · d_w`.
+    ///
+    /// # Panics
+    ///
+    /// Panics with `todo!` on `UnitCell::Kelvin` and `UnitCell::BccXy` —
+    /// deferred to a Phase-2 follow-up.
     pub fn specific_surface_area(&self) -> f32 {
         match self.cell() {
             UnitCell::Cubic { length } => 6.0 * PI * self.strut().radius() / (length * length),
+            UnitCell::Kelvin { .. } | UnitCell::BccXy { .. } => todo!(
+                "Phase 2 — closed-form specific_surface_area for Kelvin / BccXy topologies"
+            ),
         }
     }
 
@@ -105,6 +133,11 @@ impl LatticeJob {
     ///
     /// By construction, this identity holds to `f32` precision:
     /// `self.hydraulic_diameter() * self.specific_surface_area() == 4 * self.open_porosity()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics transitively via [`Self::open_porosity`] and
+    /// [`Self::specific_surface_area`] on `UnitCell::Kelvin` / `BccXy`.
     pub fn hydraulic_diameter(&self) -> f32 {
         4.0 * self.open_porosity() / self.specific_surface_area()
     }

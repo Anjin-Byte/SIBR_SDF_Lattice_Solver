@@ -12,14 +12,29 @@
 //!
 //! Every component on the right is an `ExactSdf` (per the sdf crate's
 //! precision markers), so the whole composition is an `ExactSdf`.
+//!
+//! # Topology dispatch — [`LatticeBody`]
+//!
+//! Different topologies produce cell bodies of different concrete types
+//! (`CubicCellBody` ≠ `KelvinCellBody` ≠ `BccXyCellBody`), so a single
+//! `match` arm cannot unify them. The [`LatticeBody`] enum is the
+//! resolution: one variant per topology, each holding the fully concrete
+//! composed SDF, with `Sdf`/`BoundSdf`/`ExactSdf` implemented on the enum
+//! via a delegating `match`. This mirrors the existing
+//! [`crate::primitive::BoundaryShape`] pattern — zero-cost enum dispatch,
+//! no trait objects, no type erasure.
+
+use core::f32::consts::FRAC_1_SQRT_2;
 
 use glam::Vec3;
-use sdf::{ExactSdf, Intersection, LimitedRepeat};
+use sdf::{BoundSdf, ExactSdf, Intersection, LimitedRepeat, Sdf};
 
 use crate::cell::UnitCell;
-use crate::cell::cubic::cubic_cell_body;
+use crate::cell::bccxy::{BccXyCellBody, bccxy_cell_body};
+use crate::cell::cubic::{CubicCellBody, cubic_cell_body};
+use crate::cell::kelvin::{KelvinCellBody, kelvin_cell_body};
 use crate::error::LatticeError;
-use crate::primitive::PrimitiveShape;
+use crate::primitive::{BoundaryShape, PrimitiveShape};
 use crate::strut::StrutSpec;
 
 /// The validated input specification for a lattice generation.
@@ -39,21 +54,23 @@ impl LatticeJob {
     ///
     /// # Errors
     ///
-    /// Returns [`LatticeError::StrutTooThick`] if
-    /// `strut.radius() >= cell.length() / 2`. At this threshold, struts from
-    /// adjacent periodic cells would touch across every shared face, violating
-    /// the "inner fits in a single period" precondition of [`sdf::Repeat`]
-    /// and eliminating any open pore structure.
+    /// Returns [`LatticeError::StrutTooThick`] if `strut.radius() >= r_max(L)`
+    /// for the topology in question. The per-topology `r_max` is the radius
+    /// beyond which non-adjacent struts inside one cell would overlap (or,
+    /// for Cubic, adjacent cells would touch across every shared face). See
+    /// [`r_max_for`] for the derivations.
     pub fn new(
         primitive: PrimitiveShape,
         cell: UnitCell,
         strut: StrutSpec,
     ) -> Result<Self, LatticeError> {
-        let half_cell = cell.length() * 0.5;
-        if strut.radius() >= half_cell {
+        let (topology, max_radius) = r_max_for(cell);
+        if strut.radius() >= max_radius {
             return Err(LatticeError::StrutTooThick {
                 radius: strut.radius(),
                 cell_length: cell.length(),
+                topology,
+                max_radius,
             });
         }
         Ok(Self {
@@ -79,13 +96,78 @@ impl LatticeJob {
     }
 }
 
+/// Per-topology tightest strut radius at which non-adjacent struts inside
+/// the cell do not collide.
+///
+/// Returns `(topology_name, r_max)`. The caller rejects `radius >= r_max`.
+///
+/// Derivations:
+/// - **Cubic**: `L/2`. The 3 axis-struts meet only at the origin (intended
+///   node joint); the binding constraint is inter-cell tiling — adjacent
+///   cells' struts meet across every shared face once `r ≥ L/2`.
+/// - **Kelvin**: `L/(4·√2) = L·√2/8 ≈ 0.177·L`. Binding case is parallel
+///   square-face edges on opposite sides of a TO square face, separated
+///   by `L/(2·√2)`; non-collision requires `2r < L/(2·√2)`.
+/// - **`BCCxy`**: `L/(2·√6) ≈ 0.204·L` (analytical; see the plan note for
+///   derivation). This is the proposed bound from the skew body-diagonal
+///   vs top-face-edge case sharing no endpoint; tighter numerical
+///   verification is tracked as a follow-on task.
+fn r_max_for(cell: UnitCell) -> (&'static str, f32) {
+    match cell {
+        UnitCell::Cubic { length } => ("cubic", length * 0.5),
+        UnitCell::Kelvin { length } => ("kelvin", length * FRAC_1_SQRT_2 * 0.25),
+        UnitCell::BccXy { length } => ("bccxy", length / (2.0 * 6.0_f32.sqrt())),
+    }
+}
+
+/// The composed lattice body — one variant per supported topology.
+///
+/// Each variant wraps the fully concrete
+/// `Intersection<LimitedRepeat<CellBody>, BoundaryShape>` for its topology.
+/// `Sdf` / `BoundSdf` / `ExactSdf` are implemented via delegating `match`
+/// — no trait objects, no dynamic dispatch overhead beyond a single tag
+/// test per `eval`.
+///
+/// Same pattern as [`crate::primitive::BoundaryShape`].
+///
+/// Crate-private — callers see the `lattice_body()` return as `impl
+/// ExactSdf` and need not name the concrete type.
+///
+/// The Kelvin variant carries a 36-capsule nested-Union chain which makes
+/// its size much larger than the cubic variant's 3-capsule chain. Stack
+/// size of a single `LatticeBody` is ~1 KiB; boxing would avoid the
+/// mismatch but add a heap allocation per job. Since a job constructs
+/// exactly one `LatticeBody` per invocation, the mismatch is immaterial
+/// — allow the lint.
+#[allow(clippy::type_complexity, clippy::large_enum_variant)]
+pub(crate) enum LatticeBody {
+    /// Cubic topology composition.
+    Cubic(Intersection<LimitedRepeat<CubicCellBody>, BoundaryShape>),
+    /// Kelvin (truncated octahedron) topology composition.
+    Kelvin(Intersection<LimitedRepeat<KelvinCellBody>, BoundaryShape>),
+    /// `BCCxy` (vertex octahedron) topology composition.
+    BccXy(Intersection<LimitedRepeat<BccXyCellBody>, BoundaryShape>),
+}
+
+impl Sdf for LatticeBody {
+    #[inline]
+    fn eval(&self, p: Vec3) -> f32 {
+        match self {
+            Self::Cubic(b) => b.eval(p),
+            Self::Kelvin(b) => b.eval(p),
+            Self::BccXy(b) => b.eval(p),
+        }
+    }
+}
+
+impl BoundSdf for LatticeBody {}
+impl ExactSdf for LatticeBody {}
+
 /// Composes the lattice-body SDF for a validated job.
 ///
-/// The returned value is an [`ExactSdf`] whose concrete type is a nested
-/// composition of `sdf` operators ([`Intersection`] over [`LimitedRepeat`]
-/// over a cell-body [`sdf::Union`] chain). The concrete shape is deliberately
-/// hidden behind `impl ExactSdf` — callers should treat it as an opaque SDF
-/// and compose further via `sdf`'s combinators or query it via
+/// The returned value is a [`LatticeBody`] — an enum with one concrete
+/// `ExactSdf` composition per topology. The public return type is
+/// `impl ExactSdf` to keep callers topology-agnostic; query via
 /// [`sdf::Sdf::eval`].
 ///
 /// # Structure
@@ -93,6 +175,7 @@ impl LatticeJob {
 /// The returned SDF is the intersection of a tiled cell body with the
 /// primitive boundary. `extents` is computed from the primitive's AABB and
 /// the cell length, rounded up to the nearest whole cell on each axis.
+/// `period = Vec3::splat(L)` in every supported topology.
 ///
 /// # Panics
 ///
@@ -100,36 +183,51 @@ impl LatticeJob {
 /// happen if invariants established by [`LatticeJob::new`] have been
 /// violated by unsafe construction, which is not possible via the public
 /// API.
-// `expect` is used here at two internal SDF-construction sites. Both are
-// unreachable for inputs that passed `LatticeJob::new` (which validates every
-// field and the cross-field `StrutTooThick` invariant). The messages document
-// the invariant being relied upon, per Result-vs-Panic policy: panic only
-// when violation means "programmer error," not for runtime-handleable failure.
+// `expect` is used at internal construction sites. All are unreachable for
+// inputs that passed `LatticeJob::new` (which validates every field and the
+// per-topology `StrutTooThick` invariant). The messages document the
+// invariant being relied upon, per Result-vs-Panic policy.
 #[allow(clippy::expect_used)]
 pub fn lattice_body(job: &LatticeJob) -> impl ExactSdf {
-    // Cell body: three edge-aligned struts, union'd.
-    let cell_body = match job.cell {
-        UnitCell::Cubic { length } => cubic_cell_body(length, job.strut.radius())
-            .expect("invariants verified by LatticeJob::new"),
-    };
-
-    // Extents in cell units: ceil of AABB extent divided by cell length,
-    // per axis. Symmetric around origin in the current simple model
-    // (primitives whose AABBs are not origin-centered will produce an
-    // over-approximation; acceptable — any extra tiling cells will be
-    // trimmed by the Intersection).
+    // Extents and period are topology-independent (all current topologies
+    // tile on a simple-cubic lattice of step L).
     let (lo, hi) = job.primitive.aabb();
     let extents = extents_from_aabb(lo, hi, job.cell.length());
-
-    // Period equals cell length on every axis for the cubic topology.
     let period = Vec3::splat(job.cell.length());
+    let boundary = job.primitive.boundary();
+    let radius = job.strut.radius();
 
-    let tiled = LimitedRepeat::new(period, extents, cell_body)
-        .expect("invariants verified by LatticeJob::new and extents_from_aabb");
-
-    Intersection {
-        a: tiled,
-        b: job.primitive.boundary(),
+    match job.cell {
+        UnitCell::Cubic { length } => {
+            let cell_body = cubic_cell_body(length, radius)
+                .expect("invariants verified by LatticeJob::new");
+            let tiled = LimitedRepeat::new(period, extents, cell_body)
+                .expect("invariants verified by LatticeJob::new and extents_from_aabb");
+            LatticeBody::Cubic(Intersection {
+                a: tiled,
+                b: boundary,
+            })
+        }
+        UnitCell::Kelvin { length } => {
+            let cell_body = kelvin_cell_body(length, radius)
+                .expect("invariants verified by LatticeJob::new");
+            let tiled = LimitedRepeat::new(period, extents, cell_body)
+                .expect("invariants verified by LatticeJob::new and extents_from_aabb");
+            LatticeBody::Kelvin(Intersection {
+                a: tiled,
+                b: boundary,
+            })
+        }
+        UnitCell::BccXy { length } => {
+            let cell_body = bccxy_cell_body(length, radius)
+                .expect("invariants verified by LatticeJob::new");
+            let tiled = LimitedRepeat::new(period, extents, cell_body)
+                .expect("invariants verified by LatticeJob::new and extents_from_aabb");
+            LatticeBody::BccXy(Intersection {
+                a: tiled,
+                b: boundary,
+            })
+        }
     }
 }
 
@@ -361,5 +459,162 @@ mod tests {
             StrutSpec::uniform(0.5).unwrap(),
         );
         assert!(result.is_err());
+    }
+
+    // --------------------------------------------------------------
+    // Kelvin — cross-field + end-to-end.
+    // --------------------------------------------------------------
+
+    fn valid_kelvin_job(cube_extent: f32, cell: f32, radius: f32) -> LatticeJob {
+        LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(cube_extent)).unwrap(),
+            UnitCell::kelvin(cell).unwrap(),
+            StrutSpec::uniform(radius).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn lattice_body_kelvin_at_edge_midpoint_is_negative_radius() {
+        // Kelvin home face-edge midpoint at (+L/2, L/8, L/8) = (1, 0.25, 0.25)
+        // for L=2, inside the primitive.
+        let job = valid_kelvin_job(10.0, 2.0, 0.1);
+        let body = lattice_body(&job);
+        let d = body.eval(vec3(1.0, 0.25, 0.25));
+        assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
+    }
+
+    #[test]
+    fn lattice_body_kelvin_tiles_across_shared_square_face() {
+        // A query at (+L/2, L/8, L/8) in the origin cell and the same
+        // point folded from the neighbor cell at (L - L/2, L/8, L/8) =
+        // (+L/2, L/8, L/8)... but we want to test that a point on the
+        // neighbor's home edge tiles correctly. In the cell centered at
+        // (L, 0, 0), the local-frame point for world (3L/2, L/8, L/8) is
+        // (+L/2, L/8, L/8), on the same home edge.
+        let l = 2.0;
+        let job = valid_kelvin_job(10.0, l, 0.1);
+        let body = lattice_body(&job);
+        let d_origin_cell = body.eval(vec3(l * 0.5, l * 0.125, l * 0.125));
+        let d_next_cell = body.eval(vec3(l * 1.5, l * 0.125, l * 0.125));
+        assert!(
+            (d_origin_cell - d_next_cell).abs() < 1e-5,
+            "tiling mismatch: {d_origin_cell} vs {d_next_cell}"
+        );
+    }
+
+    #[test]
+    fn new_rejects_kelvin_strut_at_topology_threshold() {
+        // r_max for Kelvin at L = 2 is 2 / (4√2) ≈ 0.3536.
+        let result = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::kelvin(2.0).unwrap(),
+            StrutSpec::uniform(0.3536).unwrap(),
+        );
+        assert!(matches!(result, Err(LatticeError::StrutTooThick { .. })));
+    }
+
+    #[test]
+    fn new_accepts_kelvin_strut_just_below_threshold() {
+        // r_max ≈ 0.3536; use 0.35.
+        let result = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::kelvin(2.0).unwrap(),
+            StrutSpec::uniform(0.35).unwrap(),
+        );
+        assert!(result.is_ok());
+    }
+
+    // --------------------------------------------------------------
+    // BccXy — cross-field + end-to-end.
+    // --------------------------------------------------------------
+
+    fn valid_bccxy_job(cube_extent: f32, cell: f32, radius: f32) -> LatticeJob {
+        LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(cube_extent)).unwrap(),
+            UnitCell::bccxy(cell).unwrap(),
+            StrutSpec::uniform(radius).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn lattice_body_bccxy_at_body_diagonal_midpoint_is_negative_radius() {
+        // Body-diagonal midpoint at (L/4, L/4, L/4) = (0.5, 0.5, 0.5) for L=2.
+        let job = valid_bccxy_job(10.0, 2.0, 0.1);
+        let body = lattice_body(&job);
+        let d = body.eval(vec3(0.5, 0.5, 0.5));
+        assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
+    }
+
+    #[test]
+    fn new_rejects_bccxy_strut_at_topology_threshold() {
+        // r_max for BccXy at L = 2 is 2 / (2·√6) ≈ 0.40825. Use a value
+        // clearly above to exercise the >= check.
+        let result = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::bccxy(2.0).unwrap(),
+            StrutSpec::uniform(0.409).unwrap(),
+        );
+        assert!(matches!(result, Err(LatticeError::StrutTooThick { .. })));
+    }
+
+    #[test]
+    fn new_accepts_bccxy_strut_just_below_threshold() {
+        // r_max ≈ 0.40825; use 0.40 (comfortably below).
+        let result = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::bccxy(2.0).unwrap(),
+            StrutSpec::uniform(0.40).unwrap(),
+        );
+        assert!(result.is_ok());
+    }
+
+    // --------------------------------------------------------------
+    // Topology-specific r_max regression
+    // --------------------------------------------------------------
+
+    /// Regression: "`StrutTooThick` used the cubic threshold L/2 for every
+    /// topology — Kelvin and `BccXy` jobs passed validation with struts
+    /// that would overlap in-cell."
+    /// Detection: r = 0.3·L passes cubic L/2 = 0.5 but fails Kelvin
+    /// L/(4√2) ≈ 0.177.
+    #[test]
+    fn regression_strut_too_thick_uses_topology_specific_threshold() {
+        let l = 2.0;
+        let r = 0.3 * l; // 0.6 — passes cubic (L/2=1.0), fails Kelvin (~0.354).
+        // Cubic should accept.
+        let cubic = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::cubic(l).unwrap(),
+            StrutSpec::uniform(r).unwrap(),
+        );
+        assert!(cubic.is_ok(), "cubic should accept r = 0.3·L");
+        // Kelvin should reject.
+        let kelvin = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::kelvin(l).unwrap(),
+            StrutSpec::uniform(r).unwrap(),
+        );
+        assert!(
+            matches!(kelvin, Err(LatticeError::StrutTooThick { .. })),
+            "kelvin should reject r = 0.3·L"
+        );
+    }
+
+    /// The `topology` field on `StrutTooThick` carries the right label so
+    /// the error message is informative.
+    #[test]
+    fn strut_too_thick_reports_topology_label() {
+        let err = LatticeJob::new(
+            PrimitiveShape::cube(Vec3::splat(10.0)).unwrap(),
+            UnitCell::kelvin(2.0).unwrap(),
+            StrutSpec::uniform(0.5).unwrap(),
+        )
+        .unwrap_err();
+        match err {
+            LatticeError::StrutTooThick { topology, .. } => assert_eq!(topology, "kelvin"),
+            other @ LatticeError::Sdf(_) => panic!("unexpected error: {other:?}"),
+        }
     }
 }

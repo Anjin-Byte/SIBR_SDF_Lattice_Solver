@@ -5,12 +5,17 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::{ArgGroup, Parser, ValueEnum};
 use glam::Vec3;
 
 /// Generate an SDF-based lattice mesh and write it to a file.
 #[derive(Debug, Parser)]
 #[command(name = "sibr-solver", version, about)]
+#[command(group(
+    ArgGroup::new("mesh_resolution")
+        .required(true)
+        .args(["grid_cell", "grid_ratio", "chord_accuracy"]),
+))]
 pub struct Args {
     /// Primitive boundary shape.
     #[arg(long, value_enum)]
@@ -32,6 +37,13 @@ pub struct Args {
     #[arg(long, required_if_eq("primitive", "cylinder"))]
     pub cylinder_radius: Option<f32>,
 
+    /// Unit cell topology. Default: cubic. Kelvin and `BccXy` are newly
+    /// supported; closed-form properties (`open_porosity`,
+    /// `window_diameter`, `hydraulic_diameter`) are cubic-only pending a
+    /// follow-up.
+    #[arg(long, value_enum, default_value_t = CellTopologyArg::Cubic)]
+    pub cell_topology: CellTopologyArg,
+
     /// Unit cell edge length in mm.
     #[arg(long)]
     pub cell_length: f32,
@@ -40,10 +52,34 @@ pub struct Args {
     #[arg(long)]
     pub strut_radius: f32,
 
-    /// Marching-cubes grid cell size in mm. Smaller is finer; recommended
-    /// value is `strut_radius / 3` per the Meshing Complexity Analysis note.
-    #[arg(long)]
-    pub grid_cell: f32,
+    /// Marching-cubes grid cell size in mm (absolute). Smaller is finer;
+    /// recommended starting point is `strut_radius / 3` per the Meshing
+    /// Complexity Analysis note (equivalent to `--grid-ratio 3`). Exactly
+    /// one of `--grid-cell`, `--grid-ratio`, or `--chord-accuracy` must
+    /// be specified.
+    #[arg(long, group = "mesh_resolution")]
+    pub grid_cell: Option<f32>,
+
+    /// Mesh sampling density: number of grid cells per strut radius.
+    /// Convenience alternative to `--grid-cell` — the CLI computes
+    /// `grid_cell = strut_radius / grid_ratio`. Higher is finer. Typical
+    /// useful range 3–10; below 3 surfaces look faceted, above 10 the
+    /// triangle count outgrows printer tolerance. Exactly one of
+    /// `--grid-cell`, `--grid-ratio`, or `--chord-accuracy` must be
+    /// specified.
+    #[arg(long, group = "mesh_resolution")]
+    pub grid_ratio: Option<f32>,
+
+    /// Mesh chord-error target: maximum distance between the extracted
+    /// surface and the true smooth iso-surface, expressed as a
+    /// dimensionless fraction of strut radius. Convenience alternative
+    /// to `--grid-cell` — the CLI computes
+    /// `grid_cell = strut_radius * sqrt(8 * chord_accuracy)`. Must be
+    /// in `(0, 1)`; lower is more accurate (e.g., `0.005` = 0.5% of
+    /// strut radius). Exactly one of `--grid-cell`, `--grid-ratio`, or
+    /// `--chord-accuracy` must be specified.
+    #[arg(long, group = "mesh_resolution")]
+    pub chord_accuracy: Option<f32>,
 
     /// Output file path. Format is inferred from the extension (`.stl`,
     /// `.obj`), or can be overridden with `--format`.
@@ -87,6 +123,23 @@ pub enum PrimitiveKind {
     Cube,
     /// Capped cylinder between two endpoints.
     Cylinder,
+}
+
+/// Which unit-cell topology to tile.
+///
+/// Deliberately a CLI-side enum separate from [`lattice_gen::UnitCell`]:
+/// clap's `ValueEnum` derive needs a local type, and keeping them
+/// distinct lets us rename CLI spellings without touching the library API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CellTopologyArg {
+    /// Simple cubic — 3 axis-centered struts per cell. The only topology
+    /// with closed-form properties currently implemented.
+    Cubic,
+    /// Kelvin (truncated octahedron) — 36-edge TO skeleton per cell.
+    Kelvin,
+    /// `BCCxy` (vertex octahedron) — 8 body diagonals + 4 top-face edges
+    /// per cell.
+    Bccxy,
 }
 
 /// Which file format to write.

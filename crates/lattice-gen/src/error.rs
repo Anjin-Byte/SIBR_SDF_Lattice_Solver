@@ -15,19 +15,31 @@ pub enum LatticeError {
 
     /// Strut radius is too large relative to the unit cell length.
     ///
-    /// To guarantee that each strut's non-zero region fits inside a single
-    /// periodic cell — the precondition for [`sdf::Repeat`] to yield exact
-    /// distances — the radius must be strictly less than half the cell length.
-    /// At the limit, struts from adjacent cells would touch across every
-    /// shared face, eliminating any open pore structure.
+    /// Each topology imposes its own tightest `r_max(L)` — the radius beyond
+    /// which non-adjacent struts in the same cell would overlap (or, for
+    /// Cubic, struts from adjacent cells would touch across every shared
+    /// face). The caller-visible rule: `radius < max_radius`.
+    ///
+    /// Derivations per topology (see `SDF_Lattice_Knowledge_Base` and the
+    /// `job.rs` `r_max_for` helper):
+    /// - **Cubic**: `max_radius = L / 2` (inter-cell tiling constraint).
+    /// - **Kelvin**: `max_radius = L / (4·√2) ≈ 0.177·L` (binding case is
+    ///   parallel square-face edges on opposite sides of a TO square face).
+    /// - **`BCCxy`**: `max_radius = L / (2·√6) ≈ 0.204·L` (binding case is the
+    ///   skew body-diagonal vs top-face edge sharing no endpoint).
     #[error(
-        "strut too thick: radius {radius} must be < half the cell length {cell_length} / 2 = {}",
-        cell_length / 2.0
+        "strut too thick for {topology}: radius {radius} must be < {max_radius} \
+         (cell length = {cell_length})"
     )]
     StrutTooThick {
         /// The rejected strut radius.
         radius: f32,
         /// The cell length it was compared against.
         cell_length: f32,
+        /// The topology whose threshold was violated.
+        topology: &'static str,
+        /// The tightest acceptable radius (exclusive upper bound) for this
+        /// topology at the given cell length.
+        max_radius: f32,
     },
 }
