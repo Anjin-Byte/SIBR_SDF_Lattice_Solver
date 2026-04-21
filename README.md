@@ -3,6 +3,7 @@
 Rust CLI for generating printable lattice meshes via signed-distance functions. Supports cubic, Kelvin, and BccXy unit cells on cube and cylinder primitives; produces STL/OBJ through a CPU-only marching-cubes pipeline with Taubin smoothing and optional QEM decimation.
 
 **API docs:** <https://anjin-byte.github.io/SIBR_SDF_Lattice_Generator/> (auto-published from `main` via GitHub Actions).
+**DEMO:** <https://anjin-byte.github.io/WoodwardFormanLatticeGen/>
 
 ## Setup
 
