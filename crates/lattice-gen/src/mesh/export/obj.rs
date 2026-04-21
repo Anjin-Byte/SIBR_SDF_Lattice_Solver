@@ -14,6 +14,10 @@
 use std::io::{self, Write};
 
 use crate::mesh::Mesh;
+use crate::progress::Progress;
+
+/// Lines per progress tick (combined vertex-line and face-line chunks).
+const LINES_PER_TICK: usize = 1024;
 
 /// Writes `mesh` to `writer` as ASCII Wavefront OBJ.
 ///
@@ -26,6 +30,25 @@ use crate::mesh::Mesh;
 /// OBJ faces are **1-indexed**. We add 1 to every index we emit. A regression
 /// test pins this convention.
 pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
+    write_with_progress(mesh, writer, &mut ())
+}
+
+/// Like [`write`], but reports progress to `progress`. Ticks once per
+/// [`LINES_PER_TICK`] lines; declared length combines the vertex pass
+/// and face pass.
+///
+/// # Errors
+///
+/// Same as [`write`].
+pub fn write_with_progress<W: Write>(
+    mesh: &Mesh,
+    writer: &mut W,
+    progress: &mut impl Progress,
+) -> io::Result<()> {
+    let v_ticks = mesh.vertices.len().div_ceil(LINES_PER_TICK.max(1));
+    let f_ticks = mesh.indices.len().div_ceil(LINES_PER_TICK.max(1));
+    progress.set_len((v_ticks + f_ticks) as u64);
+
     writeln!(writer, "# SIBR SDF Lattice Generator")?;
     writeln!(
         writer,
@@ -34,12 +57,19 @@ pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
         mesh.indices.len()
     )?;
 
-    for v in &mesh.vertices {
-        writeln!(writer, "v {} {} {}", v.x, v.y, v.z)?;
+    for chunk in mesh.vertices.chunks(LINES_PER_TICK) {
+        for v in chunk {
+            writeln!(writer, "v {} {} {}", v.x, v.y, v.z)?;
+        }
+        progress.inc(1);
     }
-    for tri in &mesh.indices {
-        writeln!(writer, "f {} {} {}", tri[0] + 1, tri[1] + 1, tri[2] + 1)?;
+    for chunk in mesh.indices.chunks(LINES_PER_TICK) {
+        for tri in chunk {
+            writeln!(writer, "f {} {} {}", tri[0] + 1, tri[1] + 1, tri[2] + 1)?;
+        }
+        progress.inc(1);
     }
+    progress.finish();
     Ok(())
 }
 
@@ -107,6 +137,47 @@ mod tests {
         write(&mesh, &mut buf).unwrap();
         let text = String::from_utf8(buf).unwrap();
         assert!(text.contains("v 1.5 -2.5 0\n") || text.contains("v 1.5 -2.5 0 "));
+    }
+
+    // --------------------------------------------------------------
+    // c. Progress plumbing (Level 1).
+    // --------------------------------------------------------------
+
+    #[test]
+    fn obj_write_with_progress_ticks_per_chunk() {
+        use crate::progress::Spy;
+        let mesh = single_triangle_mesh();
+        let mut buf = Vec::new();
+        let mut spy = Spy::default();
+        write_with_progress(&mesh, &mut buf, &mut spy).unwrap();
+        // 3 vertices + 1 triangle → ceil(3/1024)=1 + ceil(1/1024)=1 = 2 ticks.
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 2);
+        assert_eq!(spy.inc_sum, 2);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn obj_write_with_progress_empty_mesh_still_finishes() {
+        use crate::progress::Spy;
+        let mesh = Mesh::default();
+        let mut buf = Vec::new();
+        let mut spy = Spy::default();
+        write_with_progress(&mesh, &mut buf, &mut spy).unwrap();
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 0);
+        assert_eq!(spy.inc_sum, 0);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn obj_write_and_write_with_progress_produce_identical_bytes() {
+        let mesh = single_triangle_mesh();
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        write(&mesh, &mut a).unwrap();
+        write_with_progress(&mesh, &mut b, &mut ()).unwrap();
+        assert_eq!(a, b);
     }
 
     // --------------------------------------------------------------

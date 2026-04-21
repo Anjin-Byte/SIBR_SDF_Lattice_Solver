@@ -13,6 +13,7 @@ use sdf::Sdf;
 
 use super::Mesh;
 use super::grid::GridSpec;
+use crate::progress::Progress;
 use tables::CORNER_OFFSETS;
 
 /// Which isosurface-extraction method to use.
@@ -59,9 +60,24 @@ pub enum ExtractionMethod {
 /// reference freshly-emitted vertices. See the parent `mesh` module docs
 /// for other pipeline limitations.
 pub fn run<F: Sdf>(body: &F, grid: &GridSpec, method: ExtractionMethod) -> Mesh {
-    let field = sample_field(body, grid);
-    let mut mesh = Mesh::default();
+    run_with_progress(body, grid, method, &mut ())
+}
+
+/// Like [`run`], but reports progress to `progress`. Ticks once per
+/// z-slab for both the field-sampling and extraction phases, so the
+/// declared length is `(res.z + 1) + res.z`: `res.z + 1` sampling
+/// layers (the sample grid has one more layer than the cell grid in
+/// each axis) plus `res.z` extraction layers.
+pub fn run_with_progress<F: Sdf>(
+    body: &F,
+    grid: &GridSpec,
+    method: ExtractionMethod,
+    progress: &mut impl Progress,
+) -> Mesh {
     let res = grid.resolution();
+    progress.set_len(u64::from(res.z + 1) + u64::from(res.z));
+    let field = sample_field(body, grid, progress);
+    let mut mesh = Mesh::default();
     for cz in 0..res.z {
         for cy in 0..res.y {
             for cx in 0..res.x {
@@ -80,12 +96,24 @@ pub fn run<F: Sdf>(body: &F, grid: &GridSpec, method: ExtractionMethod) -> Mesh 
                 }
             }
         }
+        progress.inc(1);
     }
+    progress.finish();
     mesh
 }
 
-/// Evaluates the SDF at every grid point and returns a flat row-major buffer.
-pub(crate) fn sample_field<F: Sdf>(body: &F, grid: &GridSpec) -> Vec<f32> {
+/// Evaluates the SDF at every grid point and returns a flat row-major
+/// buffer. Reports one tick per sampled z-slab to `progress`. Callers
+/// that want a combined bar (sampling + extraction) should use
+/// [`run_with_progress`]; this variant does not call `set_len` or
+/// `finish` because it may be the first phase of a longer stage.
+///
+/// Pass `&mut ()` to opt out of progress reporting.
+pub(crate) fn sample_field<F: Sdf>(
+    body: &F,
+    grid: &GridSpec,
+    progress: &mut impl Progress,
+) -> Vec<f32> {
     let mut field = Vec::with_capacity(grid.sample_count());
     let res = grid.resolution();
     for sz in 0..=res.z {
@@ -95,6 +123,7 @@ pub(crate) fn sample_field<F: Sdf>(body: &F, grid: &GridSpec) -> Vec<f32> {
                 field.push(body.eval(p));
             }
         }
+        progress.inc(1);
     }
     field
 }
@@ -262,7 +291,7 @@ mod tests {
     /// case `i` (index 0 is unused). Used by diagnostics below.
     #[allow(clippy::cast_sign_loss)]
     fn case_histogram<F: Sdf>(body: &F, grid: &GridSpec) -> [u32; 16] {
-        let field = sample_field(body, grid);
+        let field = sample_field(body, grid, &mut ());
         let mut hist = [0_u32; 16];
         let res = grid.resolution();
         for cz in 0..res.z {
@@ -396,6 +425,55 @@ mod tests {
                 assert!(mesh.vertices[i as usize].is_finite());
             }
         }
+    }
+
+    // --------------------------------------------------------------
+    // Progress plumbing (Level 1).
+    //
+    // Target failure class: a stage adds a progress variant but
+    // silently drops inc/finish (the bar would stall or never release).
+    // --------------------------------------------------------------
+
+    #[test]
+    fn run_with_progress_reports_expected_tick_count() {
+        use crate::progress::Spy;
+        let sphere = Sphere::new(1.0).unwrap();
+        let grid = GridSpec::new(Vec3::splat(-1.5), UVec3::splat(8), 0.4).unwrap();
+        let mut spy = Spy::default();
+        let _mesh = run_with_progress(&sphere, &grid, ExtractionMethod::ClassicMc, &mut spy);
+        let res = grid.resolution();
+        let expected = u64::from(res.z + 1) + u64::from(res.z);
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, expected);
+        assert_eq!(spy.inc_sum, expected);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn run_with_progress_on_empty_grid_still_finishes() {
+        use crate::progress::Spy;
+        // 1-cell grid with the sphere far away — zero triangles but
+        // progress must still be well-formed.
+        let sphere = Sphere::new(0.001).unwrap();
+        let grid = GridSpec::new(vec3(100.0, 100.0, 100.0), UVec3::splat(1), 0.1).unwrap();
+        let mut spy = Spy::default();
+        let _ = run_with_progress(&sphere, &grid, ExtractionMethod::ClassicMc, &mut spy);
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.finish_calls, 1);
+        assert_eq!(spy.inc_sum, spy.total);
+    }
+
+    #[test]
+    fn run_without_progress_delegates_cleanly() {
+        // The non-progress `run` must still produce the same mesh as
+        // `run_with_progress(… &mut ())` — byte-identical in this case
+        // because the extraction logic is the same.
+        let sphere = Sphere::new(1.0).unwrap();
+        let grid = GridSpec::new(Vec3::splat(-1.5), UVec3::splat(10), 0.3).unwrap();
+        let a = run(&sphere, &grid, ExtractionMethod::ClassicMc);
+        let b = run_with_progress(&sphere, &grid, ExtractionMethod::ClassicMc, &mut ());
+        assert_eq!(a.indices, b.indices);
+        assert_eq!(a.vertices, b.vertices);
     }
 
     #[test]

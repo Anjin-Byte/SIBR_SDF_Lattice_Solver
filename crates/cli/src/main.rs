@@ -11,13 +11,25 @@
 #![forbid(unsafe_code)]
 
 mod args;
+mod progress;
 mod run;
 
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // The pipeline owns the shared MultiProgress; tracing routes logs
+    // through its suspend-aware writer so bars and info lines share
+    // stderr without tearing. Wrapping stderr in our own writer hides
+    // tracing-subscriber's default TTY detection, so we forward the
+    // answer explicitly via `.with_ansi(...)` — otherwise piped output
+    // ends up littered with ANSI color codes.
+    use std::io::IsTerminal;
+    let pipeline = progress::Pipeline::new();
+    let use_ansi = std::io::stderr().is_terminal();
+
     tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
+        .with_writer(pipeline.log_writer())
+        .with_ansi(use_ansi)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
@@ -26,7 +38,7 @@ fn main() -> ExitCode {
 
     let args = <args::Args as clap::Parser>::parse();
 
-    match run::run(&args) {
+    match run::run(&args, &pipeline) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             // Print the full error chain to stderr.

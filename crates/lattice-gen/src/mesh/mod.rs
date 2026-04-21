@@ -50,8 +50,8 @@ pub mod weld;
 pub use export::Format;
 pub use grid::GridSpec;
 pub use marching_cubes::ExtractionMethod;
-pub use smooth::{SmoothError, TaubinParams, taubin};
-pub use subdivide::{ButterflyParams, butterfly};
+pub use smooth::{SmoothError, TaubinParams, taubin, taubin_with_progress};
+pub use subdivide::{ButterflyParams, butterfly, butterfly_with_progress};
 pub use weld::weld_by_position;
 
 use glam::Vec3;
@@ -99,8 +99,19 @@ impl Mesh {
 /// Woodward Fig. 4B-scale parts (~200³ voxels), runs in seconds; for
 /// Fig. 4A-scale (~500³+ voxels), consider the production GPU path.
 pub fn mesh_with(job: &crate::LatticeJob, grid: &GridSpec, method: ExtractionMethod) -> Mesh {
+    mesh_with_progress(job, grid, method, &mut ())
+}
+
+/// Like [`mesh_with`], but reports progress to `progress`. See
+/// [`marching_cubes::run_with_progress`] for the tick schedule.
+pub fn mesh_with_progress(
+    job: &crate::LatticeJob,
+    grid: &GridSpec,
+    method: ExtractionMethod,
+    progress: &mut impl crate::Progress,
+) -> Mesh {
     let body = crate::lattice_body(job);
-    marching_cubes::run(&body, grid, method)
+    marching_cubes::run_with_progress(&body, grid, method, progress)
 }
 
 /// Convenience wrapper around [`mesh_with`] that uses

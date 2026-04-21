@@ -19,6 +19,8 @@
     clippy::cast_precision_loss,
 )]
 
+mod progress;
+
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
@@ -27,6 +29,8 @@ use std::time::Instant;
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use meshopt::{SimplifyOptions, VertexDataAdapter};
+
+use crate::progress::Pipeline;
 
 #[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Workspace post-processing tools")]
@@ -70,33 +74,39 @@ enum Cmd {
 
 fn main() -> Result<()> {
     let args = <Args as Parser>::parse();
+    let pipeline = Pipeline::new();
     match args.cmd {
         Cmd::Remesh {
             input,
             output,
             target_error,
             target_tris,
-        } => remesh(&input, &output, target_error, target_tris),
+        } => remesh(&pipeline, &input, &output, target_error, target_tris),
     }
 }
 
 /// Reads `input` as binary STL, feeds it through `meshopt::simplify` with
 /// topology-preservation guards (`SimplifyOptions::empty()`, which enables
 /// the safe mode), writes the result as binary STL to `output`.
-fn remesh(input: &PathBuf, output: &PathBuf, target_error: f32, target_tris: usize) -> Result<()> {
+fn remesh(
+    pipeline: &Pipeline,
+    input: &PathBuf,
+    output: &PathBuf,
+    target_error: f32,
+    target_tris: usize,
+) -> Result<()> {
     // ---- load input ----------------------------------------------------
     let t_read = Instant::now();
+    let read_spinner = pipeline.spinner("reading");
     let mut in_file =
         BufReader::new(File::open(input).with_context(|| format!("opening {}", input.display()))?);
     let stl = stl_io::read_stl(&mut in_file).context("parsing STL")?;
     let in_tris_raw = stl.faces.len();
     let in_verts_raw = stl.vertices.len();
-    eprintln!(
-        "[xtask::remesh] read {} triangles, {} unique vertices in {:.2?}",
-        in_tris_raw,
-        in_verts_raw,
+    read_spinner.finish(format!(
+        "read {in_tris_raw} tris, {in_verts_raw} verts in {:.2?}",
         t_read.elapsed()
-    );
+    ));
 
     // ---- convert to meshopt inputs ------------------------------------
     // `stl_io` already welds vertices and returns an indexed mesh.
@@ -109,6 +119,7 @@ fn remesh(input: &PathBuf, output: &PathBuf, target_error: f32, target_tris: usi
 
     // ---- simplify -----------------------------------------------------
     let t_simp = Instant::now();
+    let simp_spinner = pipeline.spinner("simplify");
     // VertexDataAdapter: tell meshopt how to find position data inside our
     // vertex array. Stride = 12 bytes (3 × f32), offset = 0.
     let vertex_bytes: &[u8] = bytemuck_slice(&vertices);
@@ -126,14 +137,14 @@ fn remesh(input: &PathBuf, output: &PathBuf, target_error: f32, target_tris: usi
         None,
     );
     let out_tris = simplified.len() / 3;
-    eprintln!(
-        "[xtask::remesh] simplified to {out_tris} triangles in {:.2?} \
-         (target_error = {target_error} mm, target_tris = {target_tris})",
+    simp_spinner.finish(format!(
+        "simplified to {out_tris} tris in {:.2?} (target_error={target_error}, target_tris={target_tris})",
         t_simp.elapsed()
-    );
+    ));
 
     // ---- write output as binary STL -----------------------------------
     let t_write = Instant::now();
+    let write_spinner = pipeline.spinner("writing");
     let mut out_file = BufWriter::new(
         File::create(output).with_context(|| format!("creating {}", output.display()))?,
     );
@@ -168,18 +179,18 @@ fn remesh(input: &PathBuf, output: &PathBuf, target_error: f32, target_tris: usi
     });
 
     stl_io::write_stl(&mut out_file, tris_iter).context("writing STL")?;
-    eprintln!(
-        "[xtask::remesh] wrote {} in {:.2?}",
+    write_spinner.finish(format!(
+        "wrote {} in {:.2?}",
         output.display(),
         t_write.elapsed()
-    );
+    ));
 
-    eprintln!(
+    pipeline.println(format!(
         "[xtask::remesh] DONE: {} → {} triangles ({:.1}% reduction)",
         in_tris_raw,
         out_tris,
         (1.0 - out_tris as f64 / in_tris_raw as f64) * 100.0
-    );
+    ));
 
     Ok(())
 }

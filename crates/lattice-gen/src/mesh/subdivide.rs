@@ -41,6 +41,7 @@ use glam::Vec3;
 use std::collections::HashMap;
 
 use super::Mesh;
+use crate::progress::Progress;
 
 /// Tension parameter `w` from Dyn-Levin-Gregory. Standard choice; the
 /// value used throughout the literature.
@@ -83,9 +84,22 @@ impl ButterflyParams {
 /// triangle count and `E` is edge count (`≈ 1.5 T` for a closed
 /// manifold). Memory: output mesh is ~4× the input size.
 pub fn butterfly(mesh: &mut Mesh, params: ButterflyParams) {
+    butterfly_with_progress(mesh, params, &mut ());
+}
+
+/// Like [`butterfly`], but reports progress to `progress`. Ticks once
+/// per iteration; declared length is `params.iterations()`.
+pub fn butterfly_with_progress(
+    mesh: &mut Mesh,
+    params: ButterflyParams,
+    progress: &mut impl Progress,
+) {
+    progress.set_len(u64::from(params.iterations));
     for _ in 0..params.iterations {
         butterfly_once(mesh);
+        progress.inc(1);
     }
+    progress.finish();
 }
 
 /// Applies a single Butterfly iteration in place.
@@ -362,6 +376,34 @@ mod tests {
                 assert!(idx < n, "index {idx} out of range {n}");
             }
         }
+    }
+
+    // --------------------------------------------------------------
+    // Progress plumbing (Level 1).
+    // --------------------------------------------------------------
+
+    #[test]
+    fn butterfly_with_progress_ticks_per_iteration() {
+        use crate::progress::Spy;
+        let mut mesh = tetrahedron();
+        let mut spy = Spy::default();
+        butterfly_with_progress(&mut mesh, ButterflyParams::new(2), &mut spy);
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 2);
+        assert_eq!(spy.inc_sum, 2);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn butterfly_with_progress_zero_iterations_still_finishes() {
+        use crate::progress::Spy;
+        let mut mesh = tetrahedron();
+        let mut spy = Spy::default();
+        butterfly_with_progress(&mut mesh, ButterflyParams::new(0), &mut spy);
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 0);
+        assert_eq!(spy.inc_sum, 0);
+        assert_eq!(spy.finish_calls, 1);
     }
 
     #[test]

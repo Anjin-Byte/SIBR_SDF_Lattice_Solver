@@ -60,6 +60,7 @@ pub mod error;
 pub mod job;
 pub mod mesh;
 pub mod primitive;
+pub mod progress;
 pub mod properties;
 pub mod strut;
 
@@ -68,4 +69,5 @@ pub use error::LatticeError;
 pub use job::{LatticeJob, lattice_body};
 pub use mesh::{GridSpec, Mesh};
 pub use primitive::PrimitiveShape;
+pub use progress::Progress;
 pub use strut::StrutSpec;

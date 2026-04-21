@@ -10,15 +10,17 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
 use lattice_gen::mesh::{
-    ButterflyParams, ExtractionMethod, Format, TaubinParams, butterfly, export, mesh_with, taubin,
-    weld_by_position,
+    ButterflyParams, ExtractionMethod, Format, TaubinParams, butterfly_with_progress, export,
+    mesh_with_progress, taubin_with_progress, weld_by_position,
 };
 use lattice_gen::{GridSpec, LatticeError, LatticeJob, PrimitiveShape, StrutSpec, UnitCell};
 
 use crate::args::{Args, CellTopologyArg, ExtractionMethodArg, OutputFormat, PrimitiveKind};
+use crate::progress::Pipeline;
 
-/// Executes the CLI action described by `args`.
-pub fn run(args: &Args) -> Result<()> {
+/// Executes the CLI action described by `args`, rendering progress via
+/// the supplied [`Pipeline`].
+pub fn run(args: &Args, pipeline: &Pipeline) -> Result<()> {
     let primitive = build_primitive(args).context("while constructing the primitive")?;
     let cell = build_cell(args.cell_topology, args.cell_length)
         .with_context(|| format!("cell_length = {}", args.cell_length))?;
@@ -47,7 +49,8 @@ pub fn run(args: &Args) -> Result<()> {
     tracing::info!("extraction method: {method:?}");
 
     let t0 = Instant::now();
-    let mut m = mesh_with(&job, &grid, method);
+    let mut mesh_bar = pipeline.stage("meshing");
+    let mut m = mesh_with_progress(&job, &grid, method, &mut mesh_bar);
     let elapsed = t0.elapsed();
     let unwelded_tris = m.triangle_count();
     let unwelded_verts = m.vertex_count();
@@ -64,9 +67,12 @@ pub fn run(args: &Args) -> Result<()> {
     // Weld vertices before export so downstream consumers (PreForm, GPU
     // paths, etc.) see a properly indexed mesh. Tolerance is chosen
     // empirically — see `weld_by_position`'s doc comment for the
-    // rationale.
+    // rationale. No inner progress signal — welding is fast; the CLI
+    // shows a spinner so the user sees the stage is active.
+    let mut weld_bar = pipeline.spinner("welding");
     let tolerance = grid.cell_size() * 1e-4;
     weld_by_position(&mut m, tolerance);
+    lattice_gen::Progress::finish(&mut weld_bar);
     tracing::info!(
         "welded: {} triangles, {} vertices ({} duplicates merged, {} degenerates dropped)",
         m.triangle_count(),
@@ -88,7 +94,12 @@ pub fn run(args: &Args) -> Result<()> {
             predicted_tris,
         );
         let t_sub = Instant::now();
-        butterfly(&mut m, ButterflyParams::new(args.subdivide_iterations));
+        let mut sub_bar = pipeline.stage("subdivide");
+        butterfly_with_progress(
+            &mut m,
+            ButterflyParams::new(args.subdivide_iterations),
+            &mut sub_bar,
+        );
         tracing::info!(
             "subdivided: {} triangles, {} vertices in {:.2?}",
             m.triangle_count(),
@@ -104,7 +115,8 @@ pub fn run(args: &Args) -> Result<()> {
         let params = TaubinParams::default_with_iterations(args.smooth_iterations)
             .context("building Taubin parameters")?;
         let t_smooth = Instant::now();
-        taubin(&mut m, params);
+        let mut smooth_bar = pipeline.stage("smoothing");
+        taubin_with_progress(&mut m, params, &mut smooth_bar);
         tracing::info!(
             "smoothed: {} Taubin iterations in {:.2?}",
             args.smooth_iterations,
@@ -117,9 +129,12 @@ pub fn run(args: &Args) -> Result<()> {
     let file = File::create(output_path)
         .with_context(|| format!("creating output file {}", output_path.display()))?;
     let mut writer = BufWriter::new(file);
+    let mut export_bar = pipeline.stage("writing");
     match format {
-        Format::Stl => export::stl::write(&m, &mut writer).context("writing STL")?,
-        Format::Obj => export::obj::write(&m, &mut writer).context("writing OBJ")?,
+        Format::Stl => export::stl::write_with_progress(&m, &mut writer, &mut export_bar)
+            .context("writing STL")?,
+        Format::Obj => export::obj::write_with_progress(&m, &mut writer, &mut export_bar)
+            .context("writing OBJ")?,
     }
     tracing::info!("wrote {} ({:?})", output_path.display(), format);
     Ok(())
@@ -646,7 +661,7 @@ mod tests {
     fn run_cubic_smoke_completes() {
         let out = smoke_output_path("cubic");
         let args = smoke_args(CellTopologyArg::Cubic, &out);
-        run(&args).expect("cubic run should succeed");
+        run(&args, &Pipeline::new()).expect("cubic run should succeed");
         assert!(out.exists(), "output file not written");
         let _ = std::fs::remove_file(&out);
     }
@@ -658,7 +673,7 @@ mod tests {
     fn regression_cli_kelvin_does_not_panic_on_properties_log() {
         let out = smoke_output_path("kelvin");
         let args = smoke_args(CellTopologyArg::Kelvin, &out);
-        run(&args).expect("kelvin run should succeed without panic");
+        run(&args, &Pipeline::new()).expect("kelvin run should succeed without panic");
         assert!(out.exists(), "output file not written");
         let _ = std::fs::remove_file(&out);
     }
@@ -668,7 +683,7 @@ mod tests {
     fn regression_cli_bccxy_does_not_panic_on_properties_log() {
         let out = smoke_output_path("bccxy");
         let args = smoke_args(CellTopologyArg::Bccxy, &out);
-        run(&args).expect("bccxy run should succeed without panic");
+        run(&args, &Pipeline::new()).expect("bccxy run should succeed without panic");
         assert!(out.exists(), "output file not written");
         let _ = std::fs::remove_file(&out);
     }

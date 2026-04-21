@@ -43,6 +43,7 @@ use glam::Vec3;
 use thiserror::Error;
 
 use super::Mesh;
+use crate::progress::Progress;
 
 /// Taubin defaults from the 1995 paper: pass-band frequency `k_PB ≈ 0.1`.
 const DEFAULT_LAMBDA: f32 = 0.5;
@@ -170,7 +171,15 @@ impl TaubinParams {
 /// total adjacency edges. On a ~300k-vertex welded mesh, 10 iterations
 /// complete in well under 100 ms on a modern CPU.
 pub fn taubin(mesh: &mut Mesh, params: TaubinParams) {
+    taubin_with_progress(mesh, params, &mut ());
+}
+
+/// Like [`taubin`], but reports progress to `progress`. Ticks once per
+/// λ+μ iteration; declared length is `params.iterations()`.
+pub fn taubin_with_progress(mesh: &mut Mesh, params: TaubinParams, progress: &mut impl Progress) {
+    progress.set_len(u64::from(params.iterations));
     if params.iterations == 0 || mesh.vertices.is_empty() {
+        progress.finish();
         return;
     }
 
@@ -186,7 +195,9 @@ pub fn taubin(mesh: &mut Mesh, params: TaubinParams) {
         // Pass 2: μ (anti-shrink). Recomputed Δ on updated positions.
         compute_laplacian(mesh, &adjacency, &mut deltas);
         apply_scaled(mesh, &deltas, params.mu);
+        progress.inc(1);
     }
+    progress.finish();
 }
 
 /// Builds per-vertex neighbor lists from the mesh's triangle indices.
@@ -428,6 +439,47 @@ mod tests {
     // --------------------------------------------------------------
     // Determinism.
     // --------------------------------------------------------------
+
+    // --------------------------------------------------------------
+    // Progress plumbing (Level 1).
+    // --------------------------------------------------------------
+
+    #[test]
+    fn taubin_with_progress_ticks_per_iteration() {
+        use crate::progress::Spy;
+        let mut mesh = tetrahedron();
+        let params = TaubinParams::default_with_iterations(5).unwrap();
+        let mut spy = Spy::default();
+        taubin_with_progress(&mut mesh, params, &mut spy);
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 5);
+        assert_eq!(spy.inc_sum, 5);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn taubin_with_progress_zero_iterations_still_finishes() {
+        use crate::progress::Spy;
+        let mut mesh = tetrahedron();
+        let params = TaubinParams::default_with_iterations(0).unwrap();
+        let mut spy = Spy::default();
+        taubin_with_progress(&mut mesh, params, &mut spy);
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 0);
+        assert_eq!(spy.inc_sum, 0);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn taubin_with_progress_empty_mesh_still_finishes() {
+        use crate::progress::Spy;
+        let mut mesh = Mesh::default();
+        let params = TaubinParams::default_with_iterations(5).unwrap();
+        let mut spy = Spy::default();
+        taubin_with_progress(&mut mesh, params, &mut spy);
+        assert_eq!(spy.finish_calls, 1);
+        assert_eq!(spy.inc_sum, 0);
+    }
 
     #[test]
     fn taubin_is_deterministic_on_identical_input() {

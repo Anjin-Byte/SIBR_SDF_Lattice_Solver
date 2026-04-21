@@ -24,9 +24,14 @@ use std::io::{self, Write};
 use glam::Vec3;
 
 use crate::mesh::Mesh;
+use crate::progress::Progress;
 
 /// Maximum triangle count representable in the binary STL header's u32 field.
 const MAX_STL_TRIANGLES: usize = u32::MAX as usize;
+
+/// Triangles per progress tick. Coarse enough that ticking isn't a
+/// write-loop hotspot (~50 bytes/triangle → ~50 KB per tick).
+const TRIANGLES_PER_TICK: usize = 1024;
 
 /// Writes `mesh` to `writer` in binary STL format.
 ///
@@ -50,8 +55,32 @@ const MAX_STL_TRIANGLES: usize = u32::MAX as usize;
 /// via `(v1 - v0) × (v2 - v0)` normalized. This matches our "outward =
 /// positive-SDF side" winding convention (verified by the signed-volume
 /// integration test in `tests/meshing.rs`).
-#[allow(clippy::expect_used)]
 pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
+    write_with_progress(mesh, writer, &mut ())
+}
+
+/// Like [`write`], but reports progress to `progress`. Ticks once per
+/// [`TRIANGLES_PER_TICK`] triangles written; declared length is
+/// `triangle_count.div_ceil(TRIANGLES_PER_TICK)`.
+///
+/// # Errors
+///
+/// Same as [`write`]. A write failure partway through leaves `progress`
+/// in an intermediate state but still calls `finish` via the closure-free
+/// path (see `?` propagation below; `finish` is called only on success).
+/// Callers that need `finish` on the error path should wrap the call.
+///
+/// # Panics
+///
+/// Will not panic in practice — the `u32::try_from(mesh.indices.len())`
+/// is bounds-checked by the preceding [`io::ErrorKind::InvalidInput`]
+/// return.
+#[allow(clippy::expect_used)]
+pub fn write_with_progress<W: Write>(
+    mesh: &Mesh,
+    writer: &mut W,
+    progress: &mut impl Progress,
+) -> io::Result<()> {
     if mesh.indices.len() > MAX_STL_TRIANGLES {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -63,6 +92,9 @@ pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
         ));
     }
 
+    let total_ticks = mesh.indices.len().div_ceil(TRIANGLES_PER_TICK.max(1));
+    progress.set_len(total_ticks as u64);
+
     // Header: 80 bytes, zero-filled except for a short description.
     let mut header = [0_u8; 80];
     let desc = b"SIBR SDF Lattice Generator";
@@ -73,20 +105,24 @@ pub fn write<W: Write>(mesh: &Mesh, writer: &mut W) -> io::Result<()> {
     let count = u32::try_from(mesh.indices.len()).expect("bounds-checked above");
     writer.write_all(&count.to_le_bytes())?;
 
-    // Triangles.
-    for tri in &mesh.indices {
-        let v0 = mesh.vertices[tri[0] as usize];
-        let v1 = mesh.vertices[tri[1] as usize];
-        let v2 = mesh.vertices[tri[2] as usize];
-        let normal = triangle_normal(v0, v1, v2);
-        write_vec3(writer, normal)?;
-        write_vec3(writer, v0)?;
-        write_vec3(writer, v1)?;
-        write_vec3(writer, v2)?;
-        // Attribute byte count — always zero in standard STL.
-        writer.write_all(&0_u16.to_le_bytes())?;
+    // Triangles, ticked per chunk.
+    for chunk in mesh.indices.chunks(TRIANGLES_PER_TICK) {
+        for tri in chunk {
+            let v0 = mesh.vertices[tri[0] as usize];
+            let v1 = mesh.vertices[tri[1] as usize];
+            let v2 = mesh.vertices[tri[2] as usize];
+            let normal = triangle_normal(v0, v1, v2);
+            write_vec3(writer, normal)?;
+            write_vec3(writer, v0)?;
+            write_vec3(writer, v1)?;
+            write_vec3(writer, v2)?;
+            // Attribute byte count — always zero in standard STL.
+            writer.write_all(&0_u16.to_le_bytes())?;
+        }
+        progress.inc(1);
     }
 
+    progress.finish();
     Ok(())
 }
 
@@ -216,6 +252,59 @@ mod tests {
         let nz = f32::from_le_bytes(buf[92..96].try_into().unwrap());
         assert!(!nx.is_nan() && !ny.is_nan() && !nz.is_nan());
         assert_eq!((nx, ny, nz), (0.0, 0.0, 0.0));
+    }
+
+    // --------------------------------------------------------------
+    // c. Progress plumbing (Level 1).
+    // --------------------------------------------------------------
+
+    #[test]
+    fn stl_write_with_progress_ticks_per_chunk() {
+        use crate::progress::Spy;
+        // 2500 triangles → ceil(2500 / 1024) = 3 ticks.
+        let mut verts = Vec::new();
+        let mut idx = Vec::new();
+        for i in 0..2500_u32 {
+            let base = verts.len() as u32;
+            verts.push(vec3(i as f32, 0.0, 0.0));
+            verts.push(vec3(i as f32 + 1.0, 0.0, 0.0));
+            verts.push(vec3(i as f32, 1.0, 0.0));
+            idx.push([base, base + 1, base + 2]);
+            let _ = i; // suppress lint
+        }
+        let mesh = Mesh {
+            vertices: verts,
+            indices: idx,
+        };
+        let mut buf = Vec::new();
+        let mut spy = Spy::default();
+        write_with_progress(&mesh, &mut buf, &mut spy).unwrap();
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 3);
+        assert_eq!(spy.inc_sum, 3);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn stl_write_with_progress_empty_mesh_still_finishes() {
+        use crate::progress::Spy;
+        let mesh = Mesh::default();
+        let mut buf = Vec::new();
+        let mut spy = Spy::default();
+        write_with_progress(&mesh, &mut buf, &mut spy).unwrap();
+        assert_eq!(spy.set_len_calls, 1);
+        assert_eq!(spy.total, 0);
+        assert_eq!(spy.finish_calls, 1);
+    }
+
+    #[test]
+    fn stl_write_and_write_with_progress_produce_identical_bytes() {
+        let mesh = single_triangle_mesh();
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        write(&mesh, &mut a).unwrap();
+        write_with_progress(&mesh, &mut b, &mut ()).unwrap();
+        assert_eq!(a, b);
     }
 
     // --------------------------------------------------------------

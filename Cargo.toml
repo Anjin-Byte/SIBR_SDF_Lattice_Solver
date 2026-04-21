@@ -30,6 +30,9 @@ proptest = "1"
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# Progress reporting (binary crates only — lattice-gen never depends on this)
+indicatif = "0.17"
+
 # Reserved for later phases; not yet depended on:
 # wgpu = "..."
 # winit = "..."
