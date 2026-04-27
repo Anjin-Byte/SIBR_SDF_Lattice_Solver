@@ -142,6 +142,28 @@ pub(crate) struct CellCoord {
 /// signs, the zero crossing lies at parameter `t = va / (va - vb)` from `a`
 /// toward `b` (treating the SDF as linear along the edge — exact for
 /// 1-Lipschitz exact SDFs in the limit of small `cell_size`).
+///
+/// # Determinism (cross-voxel face consistency)
+///
+/// Two adjacent voxels share a face and therefore share the four edges of
+/// that face. Each of those edges is reached from opposite directions in
+/// the two voxels' local corner numbering — so a naive
+/// `pa + (pb - pa) * t` formulation, with `t = va / (va - vb)`, computes
+/// the *same world point* via *different f32 operand orderings* in each
+/// voxel. In f32 arithmetic, the two orderings drift apart by ~1 ULP,
+/// producing distinct vertex positions that resist welding (the welding
+/// tolerance can land 1-ULP-apart values on opposite sides of a
+/// quantization boundary, leaving them unmerged). Result: 24 boundary
+/// edges per Kelvin lattice symmetry feature in the welded mesh, which
+/// render as visible holes.
+///
+/// To eliminate this, the function **canonicalizes on integer corner
+/// coordinates** (`cell + offset`, exact `u32` arithmetic) before any
+/// f32 operation. Both voxels see the same `(lo, hi)` integer pair for
+/// the shared edge → both feed `sample_point` and the interpolation
+/// formula in identical operand order → both produce *bitwise-identical*
+/// `Vec3` outputs. Welding then merges them naturally without tolerance
+/// jitter.
 pub(crate) fn interpolate_edge(
     grid: &GridSpec,
     cell: CellCoord,
@@ -152,16 +174,29 @@ pub(crate) fn interpolate_edge(
 ) -> Vec3 {
     let (ax, ay, az) = CORNER_OFFSETS[corner_a as usize];
     let (bx, by, bz) = CORNER_OFFSETS[corner_b as usize];
-    let pa = grid.sample_point(cell.x + ax, cell.y + ay, cell.z + az);
-    let pb = grid.sample_point(cell.x + bx, cell.y + by, cell.z + bz);
+    let coord_a = (cell.x + ax, cell.y + ay, cell.z + az);
+    let coord_b = (cell.x + bx, cell.y + by, cell.z + bz);
+
+    // Canonicalize: always interpolate from the lexicographically-smaller
+    // integer corner coordinate to the larger. See the `# Determinism`
+    // section above for why this is load-bearing for cross-voxel face
+    // consistency.
+    let (lo, lo_v, hi, hi_v) = if coord_a <= coord_b {
+        (coord_a, va, coord_b, vb)
+    } else {
+        (coord_b, vb, coord_a, va)
+    };
+
+    let pa = grid.sample_point(lo.0, lo.1, lo.2);
+    let pb = grid.sample_point(hi.0, hi.1, hi.2);
 
     // Guard against near-equal field values to avoid division by near-zero.
-    let denom = va - vb;
+    let denom = lo_v - hi_v;
     if denom.abs() < 1e-12 {
         // Corner values essentially equal — emit the midpoint.
         return (pa + pb) * 0.5;
     }
-    let t = (va / denom).clamp(0.0, 1.0);
+    let t = (lo_v / denom).clamp(0.0, 1.0);
     pa + (pb - pa) * t
 }
 
@@ -501,6 +536,41 @@ mod tests {
                     && v.y <= max.y + 1e-4
                     && v.z <= max.z + 1e-4,
                 "vertex {v:?} outside grid [{origin:?}, {max:?}]"
+            );
+        }
+    }
+
+    /// Sharp oracle for cross-voxel face consistency: swapping the two
+    /// corner arguments to [`interpolate_edge`] must produce a
+    /// **bitwise-identical** `Vec3` output. The two adjacent voxels that
+    /// share a face reach the shared edge from opposite corner-numbering
+    /// directions; without the canonicalization in `interpolate_edge`, f32
+    /// arithmetic produces 1-ULP-different positions that resist welding
+    /// and leave boundary-edge holes in the rendered mesh.
+    #[test]
+    fn interpolate_edge_is_order_invariant() {
+        use super::tables::EDGE_CORNERS;
+
+        let grid = GridSpec::new(Vec3::ZERO, UVec3::splat(1), 1.0).unwrap();
+        let cell = CellCoord { x: 0, y: 0, z: 0 };
+        // Asymmetric SDF magnitudes so `t` is neither 0, 0.5, nor 1 — the
+        // arithmetic exercises every operation, not just the symmetric
+        // midpoint short-circuit.
+        let va = 0.3_f32;
+        let vb = -0.7_f32;
+
+        for (i, &(a, b)) in EDGE_CORNERS.iter().enumerate() {
+            let v_ab = interpolate_edge(&grid, cell, a, b, va, vb);
+            // Swap both the corner indices AND the field values, so the
+            // call describes the same edge from the opposite direction.
+            let v_ba = interpolate_edge(&grid, cell, b, a, vb, va);
+            assert_eq!(
+                v_ab.to_array(),
+                v_ba.to_array(),
+                "edge {i} ({a}, {b}): order-swap produced different f32 outputs \
+                 v_ab={v_ab:?} v_ba={v_ba:?} — `interpolate_edge` is not bitwise \
+                 order-invariant, so adjacent voxels sharing this edge will \
+                 produce different vertex positions"
             );
         }
     }
