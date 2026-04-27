@@ -52,6 +52,32 @@ pub struct Args {
     #[arg(long)]
     pub strut_radius: f32,
 
+    /// Smoothing radius (in mm) for strut-to-strut joints (cosmetic).
+    /// Default `0.0` gives sharp (hard-`min`) joints — bit-identical to
+    /// pre-flag behavior. Positive values fillet the joints with that
+    /// approximate radius, producing C1-smooth joins. Recommended
+    /// starting value is `strut_radius * 0.3` (e.g. `0.09` for
+    /// `strut_radius = 0.3`). Larger values visibly round the joints and
+    /// can mitigate stress concentrations in printed parts.
+    ///
+    /// Note: this does **not** eliminate Marching-Cubes "noise islands"
+    /// at the lattice-primitive boundary — for that, use
+    /// `--boundary-smoothness`.
+    #[arg(long, default_value_t = 0.0)]
+    pub strut_smoothness: f32,
+
+    /// Smoothing radius (in mm) for the lattice-primitive boundary
+    /// intersection. Default `0.0` gives a sharp (hard-`max`) boundary —
+    /// bit-identical to pre-flag behavior. Positive values fillet the
+    /// lattice-primitive interface with a C1-smooth blend, eliminating
+    /// Marching-Cubes "noise islands" that arise where lattice struts
+    /// cross curved primitive boundaries (e.g., cylinder walls) at
+    /// grazing angles. A few µm (`0.001` mm) is enough to suppress the
+    /// islands; the geometric impact is invisible at that scale. Larger
+    /// values (`0.05–0.1` mm) visibly round the lattice-primitive corner.
+    #[arg(long, default_value_t = 0.0)]
+    pub boundary_smoothness: f32,
+
     /// Marching-cubes grid cell size in mm (absolute). Smaller is finer;
     /// recommended starting point is `strut_radius / 3` per the Meshing
     /// Complexity Analysis note (equivalent to `--grid-ratio 3`). Exactly

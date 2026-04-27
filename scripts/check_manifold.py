@@ -45,14 +45,26 @@ def read_stl_binary(path):
         yield (v[0], v[1], v[2]), (v[3], v[4], v[5]), (v[6], v[7], v[8])
 
 
+def _find(parent, x):
+    """Union-Find with path compression."""
+    root = x
+    while parent[root] != root:
+        root = parent[root]
+    while parent[x] != root:
+        parent[x], x = root, parent[x]
+    return root
+
+
 def analyze(path, eps):
-    """Read STL at `path`, weld at quantization `eps`, classify edges."""
+    """Read STL at `path`, weld at quantization `eps`, classify edges
+    and count connected components (shells)."""
     inv = 1.0 / eps
     keymap = {}
     n_tris = 0
     edge_counts = collections.Counter()  # frozenset({a,b}) -> incident triangle count
     edge_dirs = collections.Counter()  # (a,b) directed -> count
     n_degenerate = 0
+    parent = []  # Union-Find structure for connected components
 
     for v0, v1, v2 in read_stl_binary(path):
         n_tris += 1
@@ -66,6 +78,7 @@ def analyze(path, eps):
             if i is None:
                 i = len(keymap)
                 keymap[key] = i
+                parent.append(i)
             idx.append(i)
         a, b, c = idx
         if a == b or b == c or a == c:
@@ -74,6 +87,12 @@ def analyze(path, eps):
         for u, v in ((a, b), (b, c), (c, a)):
             edge_dirs[(u, v)] += 1
             edge_counts[frozenset((u, v))] += 1
+        # Union-Find: merge the three vertex sets via this triangle.
+        ra, rb, rc = _find(parent, a), _find(parent, b), _find(parent, c)
+        if ra != rb:
+            parent[rb] = ra
+        if rc != _find(parent, a):
+            parent[rc] = ra
 
     boundary = manifold = nonmanifold = 0
     for n in edge_counts.values():
@@ -97,6 +116,14 @@ def analyze(path, eps):
         if f != r:
             orient_errors += 1
 
+    # Count distinct components: only consider vertices that appear in
+    # at least one non-degenerate triangle (orphans don't count).
+    referenced = set()
+    for e in edge_counts:
+        referenced.update(e)
+    roots = set(_find(parent, v) for v in referenced)
+    shells = len(roots)
+
     return {
         "verts": len(keymap),
         "tris": n_tris,
@@ -106,13 +133,14 @@ def analyze(path, eps):
         "manifold": manifold,
         "nonmanifold": nonmanifold,
         "orient_errors": orient_errors,
+        "shells": shells,
     }
 
 
 def fmt(r):
     return (
         f"verts={r['verts']:>9,}  tris={r['tris']:>9,}  degen={r['degenerate']:>5,}  "
-        f"edges={r['edges_total']:>9,}  boundary={r['boundary']:>7,}  "
+        f"shells={r['shells']:>5,}  boundary={r['boundary']:>7,}  "
         f"manifold={r['manifold']:>9,}  non-manifold={r['nonmanifold']:>5,}  "
         f"orient-err={r['orient_errors']:>5,}"
     )

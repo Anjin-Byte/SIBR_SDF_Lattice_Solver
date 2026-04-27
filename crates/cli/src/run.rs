@@ -25,9 +25,14 @@ pub fn run(args: &Args, pipeline: &Pipeline) -> Result<()> {
     let cell = build_cell(args.cell_topology, args.cell_length)
         .with_context(|| format!("cell_length = {}", args.cell_length))?;
     let strut = StrutSpec::uniform(args.strut_radius)
-        .with_context(|| format!("strut_radius = {}", args.strut_radius))?;
+        .with_context(|| format!("strut_radius = {}", args.strut_radius))?
+        .with_joint_smoothness(args.strut_smoothness)
+        .with_context(|| format!("strut_smoothness = {}", args.strut_smoothness))?;
 
-    let job = LatticeJob::new(primitive, cell, strut).context("validating lattice job")?;
+    let job = LatticeJob::new(primitive, cell, strut)
+        .context("validating lattice job")?
+        .with_boundary_smoothness(args.boundary_smoothness)
+        .with_context(|| format!("boundary_smoothness = {}", args.boundary_smoothness))?;
 
     log_job_properties(args, &job);
 
@@ -304,6 +309,8 @@ mod tests {
             cell_topology: CellTopologyArg::Cubic,
             cell_length: 1.0,
             strut_radius: 0.1,
+            strut_smoothness: 0.0,
+            boundary_smoothness: 0.0,
             grid_cell: Some(0.1),
             grid_ratio: None,
             chord_accuracy: None,

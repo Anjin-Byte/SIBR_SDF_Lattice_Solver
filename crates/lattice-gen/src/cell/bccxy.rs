@@ -27,30 +27,37 @@
 //! considered.
 
 use glam::vec3;
-use sdf::{Capsule, Union};
+use sdf::{Capsule, SmoothUnion};
 
 use crate::error::LatticeError;
 
-/// Concrete nested-Union type for the `BCCxy` cell body (12 capsules).
+/// Concrete nested-`SmoothUnion` type for the `BCCxy` cell body (12 capsules).
 ///
-/// Written out fully. Because `Union<A: ExactSdf, B: ExactSdf>: ExactSdf`,
-/// this 11-level right-folded chain is `ExactSdf` whenever every leaf is.
+/// With `joint_smoothness = 0`, each `SmoothUnion` falls back to bit-exact
+/// hard `min` (see [`SmoothUnion`]'s `k = 0` fallback) so existing
+/// behavior is unchanged for callers that don't opt into smoothing.
 #[allow(clippy::type_complexity)]
-pub(crate) type BccXyCellBody = Union<
+pub(crate) type BccXyCellBody = SmoothUnion<
     Capsule,
-    Union<
+    SmoothUnion<
         Capsule,
-        Union<
+        SmoothUnion<
             Capsule,
-            Union<
+            SmoothUnion<
                 Capsule,
-                Union<
+                SmoothUnion<
                     Capsule,
-                    Union<
+                    SmoothUnion<
                         Capsule,
-                        Union<
+                        SmoothUnion<
                             Capsule,
-                            Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Capsule>>>>,
+                            SmoothUnion<
+                                Capsule,
+                                SmoothUnion<
+                                    Capsule,
+                                    SmoothUnion<Capsule, SmoothUnion<Capsule, Capsule>>,
+                                >,
+                            >,
                         >,
                     >,
                 >,
@@ -70,8 +77,13 @@ pub(crate) type BccXyCellBody = Union<
 /// practice, with `length > 0` and `radius > 0` validated upstream, the
 /// only way this fails is a bypass of [`crate::LatticeJob::new`]'s
 /// invariants — defensive path.
-pub(crate) fn bccxy_cell_body(length: f32, radius: f32) -> Result<BccXyCellBody, LatticeError> {
+pub(crate) fn bccxy_cell_body(
+    length: f32,
+    radius: f32,
+    joint_smoothness: f32,
+) -> Result<BccXyCellBody, LatticeError> {
     let h = length * 0.5;
+    let k = joint_smoothness;
 
     // Body diagonals (8): cube center ↔ each of 8 corners. The order is
     // the standard Gray-ish traversal; any order is fine since Union is
@@ -92,27 +104,37 @@ pub(crate) fn bccxy_cell_body(length: f32, radius: f32) -> Result<BccXyCellBody,
     let t4 = Capsule::new(vec3(-h, -h, h), vec3(-h, h, h), radius)?;
 
     // Right-fold 12 capsules into BccXyCellBody.
-    Ok(Union {
+    Ok(SmoothUnion {
         a: d1,
-        b: Union {
+        k,
+        b: SmoothUnion {
             a: d2,
-            b: Union {
+            k,
+            b: SmoothUnion {
                 a: d3,
-                b: Union {
+                k,
+                b: SmoothUnion {
                     a: d4,
-                    b: Union {
+                    k,
+                    b: SmoothUnion {
                         a: d5,
-                        b: Union {
+                        k,
+                        b: SmoothUnion {
                             a: d6,
-                            b: Union {
+                            k,
+                            b: SmoothUnion {
                                 a: d7,
-                                b: Union {
+                                k,
+                                b: SmoothUnion {
                                     a: d8,
-                                    b: Union {
+                                    k,
+                                    b: SmoothUnion {
                                         a: t1,
-                                        b: Union {
+                                        k,
+                                        b: SmoothUnion {
                                             a: t2,
-                                            b: Union { a: t3, b: t4 },
+                                            k,
+                                            b: SmoothUnion { a: t3, b: t4, k },
                                         },
                                     },
                                 },
@@ -168,21 +190,21 @@ mod tests {
     #[test]
     fn eval_at_cube_center_is_negative_radius() {
         // 8 body diagonals meet at the origin.
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         assert!((body.eval(Vec3::ZERO) - (-0.1)).abs() < 1e-5);
     }
 
     #[test]
     fn eval_on_body_diagonal_midpoint_is_negative_radius() {
         // Midpoint of (0,0,0)↔(h,h,h) = (L/4, L/4, L/4) = (1, 1, 1) for L=4.
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         assert!((body.eval(vec3(1.0, 1.0, 1.0)) - (-0.1)).abs() < 1e-5);
     }
 
     #[test]
     fn eval_on_top_face_edge_midpoint_is_negative_radius() {
         // Midpoint of (h, h, h)↔(-h, h, h) = (0, h, h) = (0, 2, 2) for L=4.
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         assert!((body.eval(vec3(0.0, 2.0, 2.0)) - (-0.1)).abs() < 1e-5);
     }
 
@@ -190,7 +212,7 @@ mod tests {
     fn eval_at_cube_corner_top_is_negative_radius() {
         // (h, h, h) is endpoint of body diagonal d1 AND of top-face edges
         // t1 and t2. Should be -radius.
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         assert!((body.eval(vec3(2.0, 2.0, 2.0)) - (-0.1)).abs() < 1e-5);
     }
 
@@ -199,7 +221,7 @@ mod tests {
         // (-h, -h, -h) is endpoint of body diagonal d8, but NOT of any
         // home top-face edge. Still -radius because d8's endpoint cap is
         // there.
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         assert!((body.eval(vec3(-2.0, -2.0, -2.0)) - (-0.1)).abs() < 1e-5);
     }
 
@@ -208,7 +230,7 @@ mod tests {
         // Bottom face (z = -h) is NOT home-assigned; it comes from the -z
         // neighbor. From the home cell's perspective, (0, 0, -h) is a
         // pore (not on any home strut).
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(0.0, 0.0, -2.0));
         assert!(d > 0.0, "expected positive at bottom-face center, got {d}");
     }
@@ -219,12 +241,12 @@ mod tests {
 
     #[test]
     fn construction_propagates_sdf_error_on_zero_radius() {
-        assert!(bccxy_cell_body(4.0, 0.0).is_err());
+        assert!(bccxy_cell_body(4.0, 0.0, 0.0).is_err());
     }
 
     #[test]
     fn construction_propagates_sdf_error_on_negative_radius() {
-        assert!(bccxy_cell_body(4.0, -0.1).is_err());
+        assert!(bccxy_cell_body(4.0, -0.1, 0.0).is_err());
     }
 
     // --------------------------------------------------------------
@@ -237,7 +259,7 @@ mod tests {
     fn all_12_home_edges_have_negative_radius_at_midpoint() {
         let length = 4.0;
         let radius = 0.1;
-        let body = bccxy_cell_body(length, radius).unwrap();
+        let body = bccxy_cell_body(length, radius, 0.0).unwrap();
         for (i, (a, b)) in home_edges(length).iter().enumerate() {
             let mid = (*a + *b) * 0.5;
             let d = body.eval(mid);
@@ -260,7 +282,7 @@ mod tests {
     /// the origin under corner-to-corner) would reveal the error.
     #[test]
     fn regression_body_diagonals_pass_through_origin() {
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         // Origin sits at the meeting of all 8 body-diagonal ends.
         assert!((body.eval(Vec3::ZERO) - (-0.1)).abs() < 1e-5);
         // A point halfway between (h, h, h) and (-h, -h, -h) — the
@@ -296,7 +318,7 @@ mod tests {
     /// face should behave differently.
     #[test]
     fn regression_top_face_edges_on_z_plus_not_z_minus() {
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
+        let body = bccxy_cell_body(4.0, 0.1, 0.0).unwrap();
         // Midpoint of top edge t1: (0, h, h). Inside.
         assert!((body.eval(vec3(0.0, 2.0, 2.0)) - (-0.1)).abs() < 1e-5);
         // Mirror to bottom face: (0, h, -h). NOT inside a home edge
@@ -316,11 +338,12 @@ mod tests {
         );
     }
 
-    /// Regression: "Type-level `ExactSdf` dropped in the nested Union."
-    #[test]
-    fn regression_exactness_preserved() {
-        fn requires_exact<T: sdf::ExactSdf>(_: &T) {}
-        let body = bccxy_cell_body(4.0, 0.1).unwrap();
-        requires_exact(&body);
-    }
+    // Note: the previous `regression_exactness_preserved` test asserted
+    // that `bccxy_cell_body` returned an `ExactSdf`. After the migration
+    // to `SmoothUnion` for joint smoothing, the cell body is `Sdf` only —
+    // smooth-min violates the BoundSdf/ExactSdf "never overestimate
+    // magnitude" contract near joints. Callers that previously relied on
+    // the exactness guarantee (none in this workspace) would now see a
+    // type error. The function-signature `Result<BccXyCellBody, _>`
+    // continues to enforce `Sdf` via concrete-type plumbing.
 }

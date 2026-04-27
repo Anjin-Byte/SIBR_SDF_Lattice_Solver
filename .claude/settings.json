@@ -53,7 +53,10 @@
       "Bash(awk -F'midpoint=' '/midpoint/ {split\\($2, a, \",\"\\); printf \"  xy=\\(%s,%s\\)\\\\n\", a[1], a[2]}')",
       "Bash(python3 /tmp/manifold_diag/dump_full.py /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/deliverables/wafer/kelvin_mc33_smooth0.stl)",
       "Bash(pkill -f dump_full.py)",
-      "Bash(python3 /tmp/manifold_diag/dump_smart.py /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/deliverables/wafer/kelvin_mc33_smooth0.stl)"
+      "Bash(python3 /tmp/manifold_diag/dump_smart.py /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/deliverables/wafer/kelvin_mc33_smooth0.stl)",
+      "Bash(./scripts/build_wafer_diag.sh)",
+      "Bash(python3 /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/scripts/check_manifold.py /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/deliverables/wafer/kelvin_mc33_smooth0_joint00.stl /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/deliverables/wafer/kelvin_mc33_smooth0_joint009.stl)",
+      "Bash(python3 /tmp/manifold_diag/locate_islands.py /Users/taylorhale/Documents/dev_hub/Brynhild/repos/SIBR_SDF_Lattice_Generator/deliverables/wafer/kelvin_mc33_smooth0_joint00.stl)"
     ],
     "additionalDirectories": [
       "/Users/taylorhale/Documents/dev_hub/Brynhild/Engineering_Knowledge_Base/Engineering Philosophy",

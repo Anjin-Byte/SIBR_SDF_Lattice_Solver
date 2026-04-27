@@ -49,7 +49,7 @@ pub mod operators;
 pub mod primitives;
 pub mod traits;
 
-pub use combinators::{Intersection, Subtraction, Union, Xor};
+pub use combinators::{Intersection, SmoothIntersection, SmoothUnion, Subtraction, Union, Xor};
 pub use error::BuildError;
 pub use operators::{LimitedRepeat, Repeat, SymX, SymY, SymZ, Translate, UniformScale};
 pub use primitives::{AxisBox, CappedCylinder, Capsule, Sphere};

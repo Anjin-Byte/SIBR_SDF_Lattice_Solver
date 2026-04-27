@@ -27,7 +27,7 @@
 use core::f32::consts::FRAC_1_SQRT_2;
 
 use glam::Vec3;
-use sdf::{BoundSdf, ExactSdf, Intersection, LimitedRepeat, Sdf};
+use sdf::{LimitedRepeat, Sdf, SmoothIntersection};
 
 use crate::cell::UnitCell;
 use crate::cell::bccxy::{BccXyCellBody, bccxy_cell_body};
@@ -47,10 +47,13 @@ pub struct LatticeJob {
     primitive: PrimitiveShape,
     cell: UnitCell,
     strut: StrutSpec,
+    boundary_smoothness: f32,
 }
 
 impl LatticeJob {
-    /// Constructs a validated lattice job.
+    /// Constructs a validated lattice job. `boundary_smoothness` defaults
+    /// to `0.0` (sharp lattice-primitive intersection); use
+    /// [`Self::with_boundary_smoothness`] to opt into smoothing.
     ///
     /// # Errors
     ///
@@ -77,7 +80,46 @@ impl LatticeJob {
             primitive,
             cell,
             strut,
+            boundary_smoothness: 0.0,
         })
+    }
+
+    /// Sets the smoothing radius for the lattice-primitive boundary
+    /// intersection. `0.0` (the default) gives a sharp `max(lattice,
+    /// primitive)` intersection. Positive values fillet the
+    /// lattice-primitive interface with a C1-smooth blend of approximate
+    /// radius `k`, eliminating Marching-Cubes "noise islands" that arise
+    /// where lattice struts cross curved primitive boundaries (e.g.,
+    /// cylinder walls) at grazing angles.
+    ///
+    /// Practical guidance: a few µm (`0.001` mm) is enough to suppress
+    /// the islands; the geometric impact is invisible at that scale.
+    /// Larger values (`0.05–0.1` mm) visibly round the lattice-primitive
+    /// corner.
+    ///
+    /// # Errors
+    ///
+    /// - [`LatticeError::Sdf`] from [`sdf::BuildError::NonFinite`] if `k`
+    ///   is `NaN` or `±∞`.
+    /// - [`LatticeError::Sdf`] from [`sdf::BuildError::NonPositive`] if
+    ///   `k < 0`. (Zero is allowed — it means hard `max`.)
+    pub fn with_boundary_smoothness(mut self, k: f32) -> Result<Self, LatticeError> {
+        if !k.is_finite() {
+            return Err(sdf::BuildError::NonFinite {
+                field: "lattice_job.boundary_smoothness",
+                value: k,
+            }
+            .into());
+        }
+        if k < 0.0 {
+            return Err(sdf::BuildError::NonPositive {
+                field: "lattice_job.boundary_smoothness",
+                value: k,
+            }
+            .into());
+        }
+        self.boundary_smoothness = k;
+        Ok(self)
     }
 
     /// Returns the primitive boundary shape.
@@ -93,6 +135,12 @@ impl LatticeJob {
     /// Returns the strut specification.
     pub fn strut(&self) -> StrutSpec {
         self.strut
+    }
+
+    /// Returns the smoothing radius for the lattice-primitive boundary
+    /// intersection. `0.0` means hard `max`.
+    pub fn boundary_smoothness(&self) -> f32 {
+        self.boundary_smoothness
     }
 }
 
@@ -123,7 +171,7 @@ fn r_max_for(cell: UnitCell) -> (&'static str, f32) {
 /// The composed lattice body — one variant per supported topology.
 ///
 /// Each variant wraps the fully concrete
-/// `Intersection<LimitedRepeat<CellBody>, BoundaryShape>` for its topology.
+/// `SmoothIntersection<LimitedRepeat<CellBody>, BoundaryShape>` for its topology.
 /// `Sdf` / `BoundSdf` / `ExactSdf` are implemented via delegating `match`
 /// — no trait objects, no dynamic dispatch overhead beyond a single tag
 /// test per `eval`.
@@ -131,7 +179,7 @@ fn r_max_for(cell: UnitCell) -> (&'static str, f32) {
 /// Same pattern as [`crate::primitive::BoundaryShape`].
 ///
 /// Crate-private — callers see the `lattice_body()` return as `impl
-/// ExactSdf` and need not name the concrete type.
+/// Sdf` and need not name the concrete type.
 ///
 /// The Kelvin variant carries a 36-capsule nested-Union chain which makes
 /// its size much larger than the cubic variant's 3-capsule chain. Stack
@@ -142,11 +190,11 @@ fn r_max_for(cell: UnitCell) -> (&'static str, f32) {
 #[allow(clippy::type_complexity, clippy::large_enum_variant)]
 pub(crate) enum LatticeBody {
     /// Cubic topology composition.
-    Cubic(Intersection<LimitedRepeat<CubicCellBody>, BoundaryShape>),
+    Cubic(SmoothIntersection<LimitedRepeat<CubicCellBody>, BoundaryShape>),
     /// Kelvin (truncated octahedron) topology composition.
-    Kelvin(Intersection<LimitedRepeat<KelvinCellBody>, BoundaryShape>),
+    Kelvin(SmoothIntersection<LimitedRepeat<KelvinCellBody>, BoundaryShape>),
     /// `BCCxy` (vertex octahedron) topology composition.
-    BccXy(Intersection<LimitedRepeat<BccXyCellBody>, BoundaryShape>),
+    BccXy(SmoothIntersection<LimitedRepeat<BccXyCellBody>, BoundaryShape>),
 }
 
 impl Sdf for LatticeBody {
@@ -160,15 +208,18 @@ impl Sdf for LatticeBody {
     }
 }
 
-impl BoundSdf for LatticeBody {}
-impl ExactSdf for LatticeBody {}
+// Note: `LatticeBody` no longer implements `BoundSdf` or `ExactSdf`.
+// `SmoothUnion` (used in cell bodies for joint smoothing) does not
+// satisfy those traits — its values can be more-negative-inside than
+// `min(a, b)` near joints, which would over-report distance. Callers
+// only need `Sdf::eval` (Marching Cubes sampling, rendering); the
+// stronger contracts were unused by any production path.
 
 /// Composes the lattice-body SDF for a validated job.
 ///
 /// The returned value is a `LatticeBody` (crate-private enum) — one
-/// concrete `ExactSdf` composition per topology. The public return type
-/// is `impl ExactSdf` to keep callers topology-agnostic; query via
-/// [`sdf::Sdf::eval`].
+/// concrete composition per topology. The public return type is `impl
+/// Sdf` to keep callers topology-agnostic; query via [`sdf::Sdf::eval`].
 ///
 /// # Structure
 ///
@@ -188,7 +239,7 @@ impl ExactSdf for LatticeBody {}
 // per-topology `StrutTooThick` invariant). The messages document the
 // invariant being relied upon, per Result-vs-Panic policy.
 #[allow(clippy::expect_used)]
-pub fn lattice_body(job: &LatticeJob) -> impl ExactSdf {
+pub fn lattice_body(job: &LatticeJob) -> impl Sdf {
     // Extents and period are topology-independent (all current topologies
     // tile on a simple-cubic lattice of step L).
     let (lo, hi) = job.primitive.aabb();
@@ -196,36 +247,41 @@ pub fn lattice_body(job: &LatticeJob) -> impl ExactSdf {
     let period = Vec3::splat(job.cell.length());
     let boundary = job.primitive.boundary();
     let radius = job.strut.radius();
+    let smoothness = job.strut.joint_smoothness();
+    let boundary_k = job.boundary_smoothness;
 
     match job.cell {
         UnitCell::Cubic { length } => {
-            let cell_body =
-                cubic_cell_body(length, radius).expect("invariants verified by LatticeJob::new");
+            let cell_body = cubic_cell_body(length, radius, smoothness)
+                .expect("invariants verified by LatticeJob::new");
             let tiled = LimitedRepeat::new(period, extents, cell_body)
                 .expect("invariants verified by LatticeJob::new and extents_from_aabb");
-            LatticeBody::Cubic(Intersection {
+            LatticeBody::Cubic(SmoothIntersection {
                 a: tiled,
                 b: boundary,
+                k: boundary_k,
             })
         }
         UnitCell::Kelvin { length } => {
-            let cell_body =
-                kelvin_cell_body(length, radius).expect("invariants verified by LatticeJob::new");
+            let cell_body = kelvin_cell_body(length, radius, smoothness)
+                .expect("invariants verified by LatticeJob::new");
             let tiled = LimitedRepeat::new(period, extents, cell_body)
                 .expect("invariants verified by LatticeJob::new and extents_from_aabb");
-            LatticeBody::Kelvin(Intersection {
+            LatticeBody::Kelvin(SmoothIntersection {
                 a: tiled,
                 b: boundary,
+                k: boundary_k,
             })
         }
         UnitCell::BccXy { length } => {
-            let cell_body =
-                bccxy_cell_body(length, radius).expect("invariants verified by LatticeJob::new");
+            let cell_body = bccxy_cell_body(length, radius, smoothness)
+                .expect("invariants verified by LatticeJob::new");
             let tiled = LimitedRepeat::new(period, extents, cell_body)
                 .expect("invariants verified by LatticeJob::new and extents_from_aabb");
-            LatticeBody::BccXy(Intersection {
+            LatticeBody::BccXy(SmoothIntersection {
                 a: tiled,
                 b: boundary,
+                k: boundary_k,
             })
         }
     }

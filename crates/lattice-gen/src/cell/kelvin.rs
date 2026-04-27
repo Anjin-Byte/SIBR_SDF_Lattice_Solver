@@ -32,22 +32,25 @@
 //! cell, for the same reason.
 
 use glam::vec3;
-use sdf::{Capsule, Union};
+use sdf::{Capsule, SmoothUnion};
 
 use crate::error::LatticeError;
 
-/// Concrete nested-Union type for the Kelvin cell body (36 capsules).
+/// Concrete nested-`SmoothUnion` type for the Kelvin cell body (36 capsules).
 ///
-/// Written out fully — 35 levels of right-folded `Union` — so inlining
-/// and `ExactSdf` propagation stay visible to the compiler.
+/// Written out fully — 35 levels of right-folded `SmoothUnion` — so inlining
+/// stays visible to the compiler. With `joint_smoothness = 0`, each
+/// `SmoothUnion` falls back to bit-exact hard `min` (see [`SmoothUnion`]'s
+/// `k = 0` fallback) so existing behavior is unchanged for callers that
+/// don't opt into smoothing.
 #[allow(clippy::type_complexity)]
-pub(crate) type KelvinCellBody = Union<
-    Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule,
-    Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule,
-    Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule,
-    Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule,
-    Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule,
-    Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Union<Capsule, Capsule>
+pub(crate) type KelvinCellBody = SmoothUnion<
+    Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule,
+    SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule,
+    SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule,
+    SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule,
+    SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule,
+    SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, SmoothUnion<Capsule, Capsule>
     >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 >;
 
@@ -63,9 +66,14 @@ pub(crate) type KelvinCellBody = Union<
 /// only way this fails is a bypass of [`crate::LatticeJob::new`]'s
 /// invariants — defensive path.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn kelvin_cell_body(length: f32, radius: f32) -> Result<KelvinCellBody, LatticeError> {
+pub(crate) fn kelvin_cell_body(
+    length: f32,
+    radius: f32,
+    joint_smoothness: f32,
+) -> Result<KelvinCellBody, LatticeError> {
     let h = length * 0.5;
     let q = length * 0.25;
+    let k = joint_smoothness;
 
     let edges = home_edges_inner(h, q);
     let mut caps: [Option<Capsule>; 36] = [None; 36];
@@ -78,76 +86,76 @@ pub(crate) fn kelvin_cell_body(length: f32, radius: f32) -> Result<KelvinCellBod
     #[allow(clippy::expect_used)]
     let c = caps.map(|x| x.expect("populated by loop above"));
 
-    Ok(Union {
-        a: c[0],
-        b: Union {
-            a: c[1],
-            b: Union {
-                a: c[2],
-                b: Union {
-                    a: c[3],
-                    b: Union {
-                        a: c[4],
-                        b: Union {
-                            a: c[5],
-                            b: Union {
-                                a: c[6],
-                                b: Union {
-                                    a: c[7],
-                                    b: Union {
-                                        a: c[8],
-                                        b: Union {
-                                            a: c[9],
-                                            b: Union {
-                                                a: c[10],
-                                                b: Union {
-                                                    a: c[11],
-                                                    b: Union {
-                                                        a: c[12],
-                                                        b: Union {
-                                                            a: c[13],
-                                                            b: Union {
-                                                                a: c[14],
-                                                                b: Union {
-                                                                    a: c[15],
-                                                                    b: Union {
-                                                                        a: c[16],
-                                                                        b: Union {
-                                                                            a: c[17],
-                                                                            b: Union {
-                                                                                a: c[18],
-                                                                                b: Union {
-                                                                                    a: c[19],
-                                                                                    b: Union {
-                                                                                        a: c[20],
-                                                                                        b: Union {
-                                                                                            a: c[21],
-                                                                                            b: Union {
-                                                                                                a: c[22],
-                                                                                                b: Union {
-                                                                                                    a: c[23],
-                                                                                                    b: Union {
-                                                                                                        a: c[24],
-                                                                                                        b: Union {
-                                                                                                            a: c[25],
-                                                                                                            b: Union {
-                                                                                                                a: c[26],
-                                                                                                                b: Union {
-                                                                                                                    a: c[27],
-                                                                                                                    b: Union {
-                                                                                                                        a: c[28],
-                                                                                                                        b: Union {
-                                                                                                                            a: c[29],
-                                                                                                                            b: Union {
-                                                                                                                                a: c[30],
-                                                                                                                                b: Union {
-                                                                                                                                    a: c[31],
-                                                                                                                                    b: Union {
-                                                                                                                                        a: c[32],
-                                                                                                                                        b: Union {
-                                                                                                                                            a: c[33],
-                                                                                                                                            b: Union {
-                                                                                                                                                a: c[34],
+    Ok(SmoothUnion {
+        a: c[0], k,
+        b: SmoothUnion {
+            a: c[1], k,
+            b: SmoothUnion {
+                a: c[2], k,
+                b: SmoothUnion {
+                    a: c[3], k,
+                    b: SmoothUnion {
+                        a: c[4], k,
+                        b: SmoothUnion {
+                            a: c[5], k,
+                            b: SmoothUnion {
+                                a: c[6], k,
+                                b: SmoothUnion {
+                                    a: c[7], k,
+                                    b: SmoothUnion {
+                                        a: c[8], k,
+                                        b: SmoothUnion {
+                                            a: c[9], k,
+                                            b: SmoothUnion {
+                                                a: c[10], k,
+                                                b: SmoothUnion {
+                                                    a: c[11], k,
+                                                    b: SmoothUnion {
+                                                        a: c[12], k,
+                                                        b: SmoothUnion {
+                                                            a: c[13], k,
+                                                            b: SmoothUnion {
+                                                                a: c[14], k,
+                                                                b: SmoothUnion {
+                                                                    a: c[15], k,
+                                                                    b: SmoothUnion {
+                                                                        a: c[16], k,
+                                                                        b: SmoothUnion {
+                                                                            a: c[17], k,
+                                                                            b: SmoothUnion {
+                                                                                a: c[18], k,
+                                                                                b: SmoothUnion {
+                                                                                    a: c[19], k,
+                                                                                    b: SmoothUnion {
+                                                                                        a: c[20], k,
+                                                                                        b: SmoothUnion {
+                                                                                            a: c[21], k,
+                                                                                            b: SmoothUnion {
+                                                                                                a: c[22], k,
+                                                                                                b: SmoothUnion {
+                                                                                                    a: c[23], k,
+                                                                                                    b: SmoothUnion {
+                                                                                                        a: c[24], k,
+                                                                                                        b: SmoothUnion {
+                                                                                                            a: c[25], k,
+                                                                                                            b: SmoothUnion {
+                                                                                                                a: c[26], k,
+                                                                                                                b: SmoothUnion {
+                                                                                                                    a: c[27], k,
+                                                                                                                    b: SmoothUnion {
+                                                                                                                        a: c[28], k,
+                                                                                                                        b: SmoothUnion {
+                                                                                                                            a: c[29], k,
+                                                                                                                            b: SmoothUnion {
+                                                                                                                                a: c[30], k,
+                                                                                                                                b: SmoothUnion {
+                                                                                                                                    a: c[31], k,
+                                                                                                                                    b: SmoothUnion {
+                                                                                                                                        a: c[32], k,
+                                                                                                                                        b: SmoothUnion {
+                                                                                                                                            a: c[33], k,
+                                                                                                                                            b: SmoothUnion {
+                                                                                                                                                a: c[34], k,
                                                                                                                                                 b: c[35],
                                                                                                                                             },
                                                                                                                                         },
@@ -268,21 +276,21 @@ mod tests {
     #[test]
     fn eval_at_vertex_plus_h_plus_q_zero_is_negative_radius() {
         // Vertex (L/2, L/4, 0) is the endpoint of three edges.
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(2.0, 1.0, 0.0));
         assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
     }
 
     #[test]
     fn eval_at_vertex_plus_h_zero_plus_q_is_negative_radius() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(2.0, 0.0, 1.0));
         assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
     }
 
     #[test]
     fn eval_at_vertex_plus_q_plus_h_zero_is_negative_radius() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(1.0, 2.0, 0.0));
         assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
     }
@@ -290,7 +298,7 @@ mod tests {
     #[test]
     fn eval_on_face_edge_midpoint_is_negative_radius() {
         // Midpoint of (h, q, 0) ↔ (h, 0, q) = (h, q/2, q/2) = (2, 0.5, 0.5).
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(2.0, 0.5, 0.5));
         assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
     }
@@ -299,7 +307,7 @@ mod tests {
     fn eval_on_negative_face_edge_midpoint_is_negative_radius() {
         // Midpoint of (-h, q, 0) ↔ (-h, 0, q) = (-h, q/2, q/2) = (-2, 0.5, 0.5).
         // This was previously not home-assigned; now it is.
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(-2.0, 0.5, 0.5));
         assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
     }
@@ -307,20 +315,20 @@ mod tests {
     #[test]
     fn eval_on_interior_edge_midpoint_is_negative_radius() {
         // Midpoint of (h, q, 0) ↔ (q, h, 0) = (3L/8, 3L/8, 0) = (1.5, 1.5, 0).
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(1.5, 1.5, 0.0));
         assert!((d - (-0.1)).abs() < 1e-5, "expected -0.1, got {d}");
     }
 
     #[test]
     fn eval_at_cell_center_is_positive_pore() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         assert!(body.eval(Vec3::ZERO) > 0.0);
     }
 
     #[test]
     fn eval_at_hex_face_centroid_is_positive_pore() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         let p = vec3(1.5, 1.5, 1.5);
         assert!(
             body.eval(p) > 0.0,
@@ -335,12 +343,12 @@ mod tests {
 
     #[test]
     fn construction_propagates_sdf_error_on_zero_radius() {
-        assert!(kelvin_cell_body(4.0, 0.0).is_err());
+        assert!(kelvin_cell_body(4.0, 0.0, 0.0).is_err());
     }
 
     #[test]
     fn construction_propagates_sdf_error_on_negative_radius() {
-        assert!(kelvin_cell_body(4.0, -0.1).is_err());
+        assert!(kelvin_cell_body(4.0, -0.1, 0.0).is_err());
     }
 
     // --------------------------------------------------------------
@@ -354,7 +362,7 @@ mod tests {
     fn all_36_home_edges_have_negative_radius_at_midpoint() {
         let length = 4.0;
         let radius = 0.1;
-        let body = kelvin_cell_body(length, radius).unwrap();
+        let body = kelvin_cell_body(length, radius, 0.0).unwrap();
         for (i, (a, b)) in home_edges(length).iter().enumerate() {
             let mid = (*a + *b) * 0.5;
             let d = body.eval(mid);
@@ -372,7 +380,7 @@ mod tests {
     fn all_36_home_edge_endpoints_evaluate_negative_radius() {
         let length = 4.0;
         let radius = 0.1;
-        let body = kelvin_cell_body(length, radius).unwrap();
+        let body = kelvin_cell_body(length, radius, 0.0).unwrap();
         for (i, (a, b)) in home_edges(length).iter().enumerate() {
             let da = body.eval(*a);
             let db = body.eval(*b);
@@ -397,7 +405,7 @@ mod tests {
         let length = 4.0;
         // r_max = L/(4√2) ≈ 0.7071, take a bit under.
         let r = 0.7;
-        let body = kelvin_cell_body(length, r).unwrap();
+        let body = kelvin_cell_body(length, r, 0.0).unwrap();
         // Bisector between face-edge 1 and face-edge 3 on +x face = (+h, 0, 0).
         let bisector = vec3(length * 0.5, 0.0, 0.0);
         let d = body.eval(bisector);
@@ -415,7 +423,7 @@ mod tests {
     /// right on a strut." Detection: probe a -x face-edge midpoint.
     #[test]
     fn regression_negative_half_faces_are_home_assigned() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         // (-h, q/2, q/2) is the midpoint of a -x face-edge.
         let d = body.eval(vec3(-2.0, 0.5, 0.5));
         assert!(
@@ -428,7 +436,7 @@ mod tests {
     /// coordinates instead of origin-centered `[-L/2, L/2]`."
     #[test]
     fn regression_interior_edges_use_signed_coordinates() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         // (-1.5, -1.5, 0) is the midpoint of an interior edge at z = 0.
         let d = body.eval(vec3(-1.5, -1.5, 0.0));
         assert!(
@@ -442,18 +450,14 @@ mod tests {
     /// confused with the full cube face."
     #[test]
     fn regression_face_edges_use_quarter_not_half_for_in_face_coord() {
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
+        let body = kelvin_cell_body(4.0, 0.1, 0.0).unwrap();
         // Cube corner — NOT a TO vertex.
         let d = body.eval(vec3(2.0, 2.0, 2.0));
         assert!(d > 0.0, "expected positive at cube corner, got {d}");
     }
 
-    /// Regression: "Type-level `ExactSdf` preservation was dropped
-    /// during the deep nesting refactor."
-    #[test]
-    fn regression_exactness_preserved_through_36_level_nesting() {
-        fn requires_exact<T: sdf::ExactSdf>(_: &T) {}
-        let body = kelvin_cell_body(4.0, 0.1).unwrap();
-        requires_exact(&body);
-    }
+    // Note: a previous regression test asserted `kelvin_cell_body`
+    // returned an `ExactSdf`. That guarantee was deliberately dropped
+    // when the cell body migrated from nested `Union` to nested
+    // `SmoothUnion` for joint smoothing — `SmoothUnion` is `Sdf` only.
 }

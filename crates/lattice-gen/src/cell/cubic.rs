@@ -21,22 +21,30 @@
 //! SDF framework and keeps the composition exact.
 
 use glam::vec3;
-use sdf::{Capsule, Union};
+use sdf::{Capsule, SmoothUnion};
 
 use crate::error::LatticeError;
 
 /// The concrete cell-body type for the Cubic topology.
 ///
-/// Exposed internally as a type alias so `lattice_body`'s composition stays
-/// visible to the compiler for inlining and precision-tracking purposes.
-pub(crate) type CubicCellBody = Union<Capsule, Union<Capsule, Capsule>>;
+/// Uses [`SmoothUnion`] so callers can fillet the strut joints at the
+/// origin via `joint_smoothness > 0`. With `joint_smoothness = 0`, each
+/// `SmoothUnion` falls back to bit-exact hard `min` — see
+/// [`SmoothUnion`]'s docs — so existing `joint_smoothness = 0` callers
+/// see no behavioral change versus the prior `Union`-based composition.
+pub(crate) type CubicCellBody = SmoothUnion<Capsule, SmoothUnion<Capsule, Capsule>>;
 
 /// Builds the cell-body SDF for the Cubic topology.
 ///
 /// Constructs three axis-centered capsules — each spanning
-/// `[-length/2, +length/2]` along its axis at radius `radius` — and unions
-/// them. The result is a single unit cell's strut skeleton, ready for
-/// tiling via [`sdf::LimitedRepeat`].
+/// `[-length/2, +length/2]` along its axis at radius `radius` — and
+/// smooth-unions them with smoothness `joint_smoothness`. With
+/// `joint_smoothness = 0` (the default), each smooth-min collapses to
+/// hard min, recovering the original behavior bit-for-bit. With
+/// `joint_smoothness > 0`, the strut joints at the origin are filleted
+/// with approximate radius `joint_smoothness`, eliminating the gradient
+/// crease that hard min produces there. Marching Cubes extracts the
+/// smoothed surface without sub-voxel "noise islands" near the joint.
 ///
 /// # Errors
 ///
@@ -44,17 +52,23 @@ pub(crate) type CubicCellBody = Union<Capsule, Union<Capsule, Capsule>>;
 /// Given `length > 0` and `radius > 0` (both validated upstream), the only
 /// way this fails is if a caller bypasses `LatticeJob`'s invariants — so
 /// this error path is defensive, not expected in practice.
-pub(crate) fn cubic_cell_body(length: f32, radius: f32) -> Result<CubicCellBody, LatticeError> {
+pub(crate) fn cubic_cell_body(
+    length: f32,
+    radius: f32,
+    joint_smoothness: f32,
+) -> Result<CubicCellBody, LatticeError> {
     let half = length * 0.5;
     let strut_x = Capsule::new(vec3(-half, 0.0, 0.0), vec3(half, 0.0, 0.0), radius)?;
     let strut_y = Capsule::new(vec3(0.0, -half, 0.0), vec3(0.0, half, 0.0), radius)?;
     let strut_z = Capsule::new(vec3(0.0, 0.0, -half), vec3(0.0, 0.0, half), radius)?;
-    Ok(Union {
+    Ok(SmoothUnion {
         a: strut_x,
-        b: Union {
+        b: SmoothUnion {
             a: strut_y,
             b: strut_z,
+            k: joint_smoothness,
         },
+        k: joint_smoothness,
     })
 }
 
@@ -80,13 +94,13 @@ mod tests {
     #[test]
     fn eval_at_origin_is_negative_radius() {
         // All three struts pass through the origin.
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         assert!((body.eval(Vec3::ZERO) - (-0.1)).abs() < 1e-6);
     }
 
     #[test]
     fn eval_on_x_strut_interior_is_negative_radius() {
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         // Anywhere on the x-axis within [-L/2, L/2] is inside the x-strut.
         assert!((body.eval(vec3(0.5, 0.0, 0.0)) - (-0.1)).abs() < 1e-6);
         assert!((body.eval(vec3(-0.5, 0.0, 0.0)) - (-0.1)).abs() < 1e-6);
@@ -94,20 +108,20 @@ mod tests {
 
     #[test]
     fn eval_on_y_strut_interior_is_negative_radius() {
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         assert!((body.eval(vec3(0.0, 0.5, 0.0)) - (-0.1)).abs() < 1e-6);
     }
 
     #[test]
     fn eval_on_z_strut_interior_is_negative_radius() {
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         assert!((body.eval(vec3(0.0, 0.0, 0.5)) - (-0.1)).abs() < 1e-6);
     }
 
     #[test]
     fn eval_at_strut_endpoint_approximately_zero() {
         // x-strut endpoint at (+L/2, 0, 0) → on hemispherical cap at that end.
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         let d = body.eval(vec3(1.0, 0.0, 0.0));
         // Hemisphere at endpoint: distance 0 on axis = 0 - r = -r inside.
         // Actually the endpoint itself is the center of the hemisphere, so d = -r.
@@ -118,7 +132,7 @@ mod tests {
     fn eval_at_cell_interior_far_from_struts_is_positive() {
         // Near the cube corner [L/2, L/2, L/2]: all three struts pass far
         // from this point (struts are on the axes).
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         // At [1, 1, 1]: distance to each strut axis is sqrt(1 + 1) ≈ 1.414,
         // minus radius 0.1. All three give roughly the same value; min ≈ 1.314.
         let d = body.eval(vec3(1.0, 1.0, 1.0));
@@ -132,7 +146,7 @@ mod tests {
 
     #[test]
     fn construction_propagates_sdf_error_on_zero_radius() {
-        assert!(cubic_cell_body(2.0, 0.0).is_err());
+        assert!(cubic_cell_body(2.0, 0.0, 0.0).is_err());
     }
 
     // --------------------------------------------------------------
@@ -152,7 +166,7 @@ mod tests {
     /// an edge-based `(0, L)` strut (which only covers positive x).
     #[test]
     fn regression_struts_are_axis_centered_not_edge_based() {
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         // With centered struts, a point on the -x half-axis is inside.
         let d = body.eval(vec3(-0.5, 0.0, 0.0));
         assert!(d < 0.0, "expected inside (centered strut), got {d}");
@@ -162,7 +176,7 @@ mod tests {
     /// coordinate axes — cubic lattice would look like a BCC or similar."
     #[test]
     fn regression_struts_follow_pure_coordinate_axes() {
-        let body = cubic_cell_body(2.0, 0.1).unwrap();
+        let body = cubic_cell_body(2.0, 0.1, 0.0).unwrap();
         // A point equidistant from x and y axes but not on either:
         // if struts were on the xy-diagonal, this would report inside.
         let d = body.eval(vec3(0.7, 0.7, 0.0));

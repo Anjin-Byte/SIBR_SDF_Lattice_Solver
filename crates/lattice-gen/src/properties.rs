@@ -260,7 +260,7 @@ mod tests {
         let j = job(cell_length, radius);
 
         // Build the cell body directly (re-using the cubic composition).
-        let body = crate::cell::cubic::cubic_cell_body(cell_length, radius).unwrap();
+        let body = crate::cell::cubic::cubic_cell_body(cell_length, radius, 0.0).unwrap();
         // Numerical-Recipes LCG; f32 mantissa (23 bits) has headroom for
         // a u16 count, so casts below are lossless.
         let mut state: u32 = 0x1234_5678;

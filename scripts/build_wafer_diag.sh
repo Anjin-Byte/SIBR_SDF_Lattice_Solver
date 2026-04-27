@@ -33,11 +33,22 @@ cd "$REPO_ROOT"
 OUT=deliverables/wafer
 mkdir -p "$OUT"
 
-CYL="--primitive cylinder --cylinder-start 0,0,0 --cylinder-end 0,0,16 --cylinder-radius 12"
+CYL="--primitive cylinder --cylinder-start 0,0,0 --cylinder-end 0,0,5 --cylinder-radius 8"
 CELL="--cell-topology kelvin --cell-length 4 --strut-radius 0.3"
 # grid-ratio 6 doubles the production density. Bump higher for finer
 # detail; the analyzer scales fine well into the millions of triangles.
 COMMON="--grid-ratio 6"
+
+# Joint smoothing radius for strut-to-strut junctions (cosmetic).
+# 0.0 = sharp hard-min joints. ~0.3 * strut_radius gives visible fillets.
+SMOOTH="--strut-smoothness 0.15"
+
+# Boundary smoothing radius for the lattice-primitive intersection
+# (functional). 0.0 = sharp hard-max boundary; positive values fillet
+# the lattice-cylinder intersection edge and eliminate the
+# noise-island shells that arise at curved-boundary grazing-angle
+# crossings. A few µm is enough to suppress the islands.
+BOUNDARY="--boundary-smoothness 0.001"
 
 build() {
   local label="$1"; shift
@@ -49,7 +60,9 @@ build() {
   echo
 }
 
-build kelvin_mc33_smooth0   --extraction-method mc33    --smooth-iterations 0
+#build kelvin_mc33_smooth0_joint00   --extraction-method mc33 --smooth-iterations 0 --strut-smoothness 0.0
+build kelvin_mc33_smooth0_joint009  --extraction-method mc33 --smooth-iterations 0 $SMOOTH
+build kelvin_mc33_boundary001        --extraction-method mc33 --smooth-iterations 0 --strut-smoothness 0.0 $BOUNDARY
 #build kelvin_mc33_smooth15  --extraction-method mc33    --smooth-iterations 15
 #build kelvin_classic_smooth0 --extraction-method classic --smooth-iterations 0
 

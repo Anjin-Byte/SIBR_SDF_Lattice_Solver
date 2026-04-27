@@ -6,14 +6,17 @@
 
 use crate::error::LatticeError;
 
-/// The radius (and, in future phases, grading) of lattice struts.
+/// The radius (and, in future phases, grading) of lattice struts, plus
+/// the smoothness of strut-to-strut joints.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StrutSpec {
     radius: f32,
+    joint_smoothness: f32,
 }
 
 impl StrutSpec {
-    /// Constructs a uniform-radius strut specification.
+    /// Constructs a uniform-radius strut specification with sharp
+    /// (hard-`min`) joints — i.e., `joint_smoothness = 0`.
     ///
     /// # Errors
     ///
@@ -36,12 +39,58 @@ impl StrutSpec {
             }
             .into());
         }
-        Ok(Self { radius })
+        Ok(Self {
+            radius,
+            joint_smoothness: 0.0,
+        })
+    }
+
+    /// Sets the joint smoothness (smooth-`min` radius) for strut-to-strut
+    /// junctions. `0.0` means hard-`min` (creased joints, current
+    /// default behavior); positive values fillet the joints with a
+    /// blend radius `~k`. Cleaner-looking junctions and avoids the
+    /// sub-voxel "noise islands" Marching Cubes can produce near
+    /// gradient discontinuities.
+    ///
+    /// Practical guidance: pick `k` between `0.1 * strut_radius` and
+    /// `0.5 * strut_radius`. Smaller `k` → minimally-visible smoothing,
+    /// already enough to suppress noise islands at typical extraction
+    /// resolutions. Larger `k` → visibly rounded joints, which can be
+    /// desirable as a stress-concentration mitigation in printed parts.
+    ///
+    /// # Errors
+    ///
+    /// - [`LatticeError::Sdf`] from [`sdf::BuildError::NonFinite`] if
+    ///   `k` is `NaN` or `±∞`.
+    /// - [`LatticeError::Sdf`] from [`sdf::BuildError::NonPositive`] if
+    ///   `k < 0`. (Zero is allowed — it means hard `min`.)
+    pub fn with_joint_smoothness(mut self, k: f32) -> Result<Self, LatticeError> {
+        if !k.is_finite() {
+            return Err(sdf::BuildError::NonFinite {
+                field: "strut.joint_smoothness",
+                value: k,
+            }
+            .into());
+        }
+        if k < 0.0 {
+            return Err(sdf::BuildError::NonPositive {
+                field: "strut.joint_smoothness",
+                value: k,
+            }
+            .into());
+        }
+        self.joint_smoothness = k;
+        Ok(self)
     }
 
     /// Returns the uniform strut radius.
     pub fn radius(self) -> f32 {
         self.radius
+    }
+
+    /// Returns the joint-smoothing radius. `0.0` means hard `min`.
+    pub fn joint_smoothness(self) -> f32 {
+        self.joint_smoothness
     }
 }
 
