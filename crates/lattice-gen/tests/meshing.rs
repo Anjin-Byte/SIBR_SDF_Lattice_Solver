@@ -26,11 +26,11 @@ use core::f32::consts::PI;
 
 use glam::{UVec3, Vec3};
 use lattice_gen::{
-    GridSpec, LatticeJob, Mesh, PrimitiveShape, StrutSpec, UnitCell,
-    mesh::{
-        ButterflyParams, ExtractionMethod, TaubinParams, butterfly, marching_cubes,
-        mesh as mesh_lattice, taubin, weld_by_position,
-    },
+    LatticeJob, PrimitiveShape, StrutSpec, UnitCell, grid_spec_for_job, lattice_body,
+};
+use mesh::{
+    ButterflyParams, ExtractionMethod, GridSpec, Mesh, TaubinParams, butterfly, marching_cubes,
+    mesh as mesh_sdf, taubin, weld_by_position,
 };
 use sdf::Sphere;
 
@@ -176,8 +176,8 @@ fn cubic_lattice_meshes_without_panic() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
-    let mesh = mesh_lattice(&job, &grid);
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
+    let mesh = mesh_sdf(&lattice_body(&job), &grid);
     assert!(
         mesh.triangle_count() > 100,
         "expected nontrivial lattice mesh, got {} triangles",
@@ -352,7 +352,7 @@ fn diagnostic_lattice_manifoldness_quantum_sensitivity() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
     let body = lattice_gen::lattice_body(&job);
     let mesh = marching_cubes::run(&body, &grid, ExtractionMethod::ClassicMc);
 
@@ -379,7 +379,7 @@ fn mc33_manifoldness_is_no_worse_than_classic_on_lattice() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
     let quantum = grid.cell_size() * 0.1;
 
     let body = lattice_gen::lattice_body(&job);
@@ -465,7 +465,7 @@ fn cubic_lattice_is_manifold_by_index_count_after_welding() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
 
     let body = lattice_gen::lattice_body(&job);
     let mut mesh = marching_cubes::run(&body, &grid, ExtractionMethod::ClassicMc);
@@ -506,7 +506,7 @@ fn welded_and_smoothed_cubic_lattice_preserves_topology_and_volume() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
 
     let body = lattice_gen::lattice_body(&job);
     let mut mesh = marching_cubes::run(&body, &grid, ExtractionMethod::ClassicMc);
@@ -612,7 +612,7 @@ fn butterfly_subdivides_welded_cubic_lattice_preserving_originals() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
     let body = lattice_gen::lattice_body(&job);
     let mut mesh = marching_cubes::run(&body, &grid, ExtractionMethod::ClassicMc);
     weld_by_position(&mut mesh, grid.cell_size() * 1e-4);
@@ -649,7 +649,7 @@ fn butterfly_then_taubin_composes_without_errors() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.1).unwrap();
+    let grid = grid_spec_for_job(&job, 0.1).unwrap();
     let body = lattice_gen::lattice_body(&job);
     let mut mesh = marching_cubes::run(&body, &grid, ExtractionMethod::ClassicMc);
     weld_by_position(&mut mesh, grid.cell_size() * 1e-4);

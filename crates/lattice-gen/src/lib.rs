@@ -28,12 +28,14 @@
 //! or `BCCxy` job panics via `todo!`. Deferred to a Phase-2 follow-up; the
 //! CLI only logs these for cubic jobs.
 //!
-//! # Phase 1c+1d additions
+//! # Phase 1c additions
 //!
 //! - [`LatticeJob::open_porosity`] and related geometric property queries.
-//! - CPU reference meshing via [`mesh()`](crate::mesh) — marching cubes on
-//!   a dense voxel grid. Slow but correct; intended as the oracle for the
-//!   later GPU meshing path.
+//! - [`grid_spec_for_job`] — convenience factory that produces a
+//!   [`mesh::GridSpec`] sized to the job's primitive AABB. Mesh extraction
+//!   itself lives in the `mesh` crate (see [Consumer Crates](../../../SDF_Lattice_Knowledge_Base/Architecture/Patterns/Consumer%20Crates.md));
+//!   callers compose `mesh::mesh_with(&lattice_body(&job), &grid, …)`
+//!   themselves.
 //!
 //! # Example
 //!
@@ -57,17 +59,15 @@
 
 pub mod cell;
 pub mod error;
+pub mod grid;
 pub mod job;
-pub mod mesh;
 pub mod primitive;
-pub mod progress;
 pub mod properties;
 pub mod strut;
 
 pub use cell::UnitCell;
 pub use error::LatticeError;
+pub use grid::grid_spec_for_job;
 pub use job::{LatticeJob, lattice_body};
-pub use mesh::{GridSpec, Mesh};
 pub use primitive::PrimitiveShape;
-pub use progress::Progress;
 pub use strut::StrutSpec;

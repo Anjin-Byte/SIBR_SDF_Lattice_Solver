@@ -11,7 +11,9 @@ name = "sibr-lattice"
 path = "src/main.rs"
 
 [dependencies]
+sdf = { path = "../sdf" }
 lattice-gen = { path = "../lattice-gen" }
+mesh = { path = "../mesh" }
 glam = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }

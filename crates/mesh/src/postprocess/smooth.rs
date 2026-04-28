@@ -42,7 +42,7 @@
 use glam::Vec3;
 use thiserror::Error;
 
-use super::Mesh;
+use crate::Mesh;
 use crate::progress::Progress;
 
 /// Taubin defaults from the 1995 paper: pass-band frequency `k_PB ≈ 0.1`.

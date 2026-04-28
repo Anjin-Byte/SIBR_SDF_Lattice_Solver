@@ -12,7 +12,7 @@ use glam::Vec3;
 use super::tables::EDGE_CORNERS;
 use super::tables::classic::{EDGE_TABLE, TRI_TABLE};
 use super::{CellCoord, Mesh, case_index, interpolate_edge, read_corner_values};
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 
 /// Processes a single voxel and appends emitted triangles to `mesh`.
 ///

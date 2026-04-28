@@ -34,7 +34,7 @@ use glam::Vec3;
 use super::super::tables::EDGE_CORNERS;
 use super::super::{CellCoord, Mesh, interpolate_edge};
 use super::decider::interior_decider;
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 
 /// For each Case-4 subcase (indexed by `subcase - 1`), the sentinel
 /// passed to `interior_decider`. All entries have `|s| == 7` — the
@@ -139,8 +139,8 @@ pub(super) fn emit(
 )]
 mod tests {
     use super::*;
-    use crate::mesh::Mesh;
-    use crate::mesh::grid::GridSpec;
+    use crate::Mesh;
+    use crate::grid::GridSpec;
     use glam::UVec3;
 
     /// Build a single-cell grid whose corner values match `corners` in

@@ -40,7 +40,7 @@
 use glam::Vec3;
 use std::collections::HashMap;
 
-use super::Mesh;
+use crate::Mesh;
 use crate::progress::Progress;
 
 /// Tension parameter `w` from Dyn-Levin-Gregory. Standard choice; the

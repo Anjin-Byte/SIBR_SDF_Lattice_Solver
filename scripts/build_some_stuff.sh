@@ -44,32 +44,32 @@ mkdir -p deliverables/mc33 deliverables/remesh/mc33
 # `--extraction-method mc33` is the CLI default as of the full MC33 port,
 # but we pass it explicitly here so this script's behavior doesn't drift
 # if the default ever changes again.
-CYL="--primitive cylinder --cylinder-start 0,0,0 --cylinder-end 0,0,10 --cylinder-radius 17"
-COMMON="--grid-ratio 6 --extraction-method mc33 --smooth-iterations 0 --boundary-smoothness 0.001"
+CYL="--primitive cylinder --cylinder-start 0,0,0 --cylinder-end 0,0,30 --cylinder-radius 17"
+COMMON="--grid-ratio 3 --extraction-method mc33 --smooth-iterations 0 --boundary-smoothness 0.001"
 
 echo "=== [1/4] MC33: Kelvin L=3, r*=0.1 ==="
 cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology kelvin --cell-length 3 --strut-radius 0.3 \
   --strut-smoothness 0.09 \
-  $COMMON -o deliverables/mc33/kelvin_L3_rstar0.1.stl
+  $COMMON -o out/kelvin_L3_rstar0.1.stl
 
 echo "=== [2/4] MC33: Kelvin L=2, r*=0.08 ==="
 cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology kelvin --cell-length 2 --strut-radius 0.16 \
   --strut-smoothness 0.048 \
-  $COMMON -o deliverables/mc33/kelvin_L2_rstar0.08.stl
+  $COMMON -o out/kelvin_L2_rstar0.08.stl
 
 echo "=== [3/4] MC33: BccXy L=3, r*=0.1 ==="
 cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology bccxy --cell-length 3 --strut-radius 0.3 \
   --strut-smoothness 0.09 \
-  $COMMON -o deliverables/mc33/bccxy_L3_rstar0.1.stl
+  $COMMON -o out/bccxy_L3_rstar0.1.stl
 
 echo "=== [4/4] MC33: BccXy L=2, r*=0.08 ==="
 cargo run --release -q -p sibr-lattice -- $CYL \
   --cell-topology bccxy --cell-length 2 --strut-radius 0.16 \
   --strut-smoothness 0.048 \
-  $COMMON -o deliverables/mc33/bccxy_L2_rstar0.08.stl
+  $COMMON -o out/bccxy_L2_rstar0.08.stl
 
 #echo
 #echo "=== Remesh pass (target_error = 0.0002, ~0.012 mm absolute) ==="

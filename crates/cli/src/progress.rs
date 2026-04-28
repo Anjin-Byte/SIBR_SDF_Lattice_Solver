@@ -1,8 +1,8 @@
 //! Terminal progress rendering for the meshing pipeline.
 //!
 //! This module is the **only** place in the `sibr-lattice` binary that
-//! mentions `indicatif`. Elsewhere the rest of the CLI (and the whole
-//! `lattice-gen` library) sees only the [`lattice_gen::Progress`] trait.
+//! mentions `indicatif`. Elsewhere the rest of the CLI (and the `mesh`
+//! library) sees only the [`mesh::Progress`] trait.
 //!
 //! # What lives here
 //!
@@ -124,7 +124,7 @@ impl Default for Pipeline {
 }
 
 /// A single pipeline stage's progress reporter. Implements
-/// [`lattice_gen::Progress`] so it can be passed directly to
+/// [`mesh::Progress`] so it can be passed directly to
 /// `*_with_progress` library calls.
 ///
 /// `Bar(None)` is the non-TTY / disabled variant — every method is a
@@ -142,7 +142,7 @@ impl Bar {
     }
 }
 
-impl lattice_gen::Progress for Bar {
+impl mesh::Progress for Bar {
     fn set_len(&mut self, total: u64) {
         if let Some(bar) = &self.0 {
             bar.set_length(total);

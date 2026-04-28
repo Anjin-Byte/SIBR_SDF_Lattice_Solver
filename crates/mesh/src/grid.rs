@@ -7,14 +7,13 @@
 
 use glam::{UVec3, Vec3};
 
-use crate::error::LatticeError;
-use crate::job::LatticeJob;
-
 /// A sampling grid for marching cubes.
 ///
-/// Constructed via [`GridSpec::new`] or [`GridSpec::for_job`]. All
-/// constructors validate that `cell_size > 0`, `resolution` is non-zero on
-/// every axis, and `origin` is finite.
+/// Constructed via [`GridSpec::new`]. The constructor validates that
+/// `cell_size > 0`, `resolution` is non-zero on every axis, and `origin`
+/// is finite. Lattice-aware grid construction (for a `LatticeJob`) lives
+/// in `lattice-gen` as a free function — see that crate's
+/// `grid_spec_for_job`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GridSpec {
     origin: Vec3,
@@ -30,80 +29,40 @@ impl GridSpec {
     ///
     /// # Errors
     ///
-    /// - [`LatticeError::Sdf`] wrapping [`sdf::BuildError::NonFinite`] if
-    ///   any component of `origin` is `NaN` or `±∞`.
-    /// - [`LatticeError::Sdf`] wrapping [`sdf::BuildError::NonPositive`] if
-    ///   `cell_size <= 0`.
-    /// - [`LatticeError::Sdf`] wrapping [`sdf::BuildError::Degenerate`] if
-    ///   any component of `resolution` is zero.
-    pub fn new(origin: Vec3, resolution: UVec3, cell_size: f32) -> Result<Self, LatticeError> {
+    /// - [`sdf::BuildError::NonFinite`] if any component of `origin` is
+    ///   `NaN` or `±∞`, or if `cell_size` is `NaN`/`±∞`.
+    /// - [`sdf::BuildError::NonPositive`] if `cell_size <= 0`.
+    /// - [`sdf::BuildError::Degenerate`] if any component of `resolution`
+    ///   is zero.
+    pub fn new(origin: Vec3, resolution: UVec3, cell_size: f32) -> Result<Self, sdf::BuildError> {
         if !origin.is_finite() {
             return Err(sdf::BuildError::NonFinite {
                 field: "grid.origin",
                 value: 0.0,
-            }
-            .into());
+            });
         }
         if !cell_size.is_finite() {
             return Err(sdf::BuildError::NonFinite {
                 field: "grid.cell_size",
                 value: cell_size,
-            }
-            .into());
+            });
         }
         if cell_size <= 0.0 {
             return Err(sdf::BuildError::NonPositive {
                 field: "grid.cell_size",
                 value: cell_size,
-            }
-            .into());
+            });
         }
         if resolution.x == 0 || resolution.y == 0 || resolution.z == 0 {
             return Err(sdf::BuildError::Degenerate {
                 reason: "grid resolution must be non-zero on every axis",
-            }
-            .into());
+            });
         }
         Ok(Self {
             origin,
             resolution,
             cell_size,
         })
-    }
-
-    /// Builds a grid tight to a `LatticeJob`'s primitive at the given cell size.
-    ///
-    /// The grid is sized to just contain the primitive's AABB, rounded up to
-    /// the nearest whole cell on each axis and padded by one cell on each
-    /// side (so the MC algorithm sees both sign changes at the boundary).
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`LatticeError`] from underlying validation. Given a
-    /// valid `job` and `cell_size > 0`, this does not fail.
-    // Cast notes:
-    // - `cells.{x,y,z}.max(1.0) as u32`: `cells` is `ceil(positive_finite)`,
-    //   clamped to ≥ 1, so it is a finite non-negative f32. Values up to
-    //   roughly 10^7 (typical production upper bound) fit in u32 without
-    //   truncation. Pathological jobs with >10^7 cells per axis would
-    //   exceed the grid-memory budget long before hitting the u32 limit.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    pub fn for_job(job: &LatticeJob, cell_size: f32) -> Result<Self, LatticeError> {
-        let (lo, hi) = job.primitive().aabb();
-        // Pad by one cell on each side so the boundary is cleanly captured.
-        let padding = Vec3::splat(cell_size);
-        let padded_lo = lo - padding;
-        let padded_hi = hi + padding;
-        let extent = padded_hi - padded_lo;
-        // Resolution = ceil(extent / cell_size) on each axis.
-        let cells = (extent / cell_size).ceil();
-        // Clamp to at least 1 cell per axis; `new` would reject 0.
-        let res = UVec3::new(
-            cells.x.max(1.0) as u32,
-            cells.y.max(1.0) as u32,
-            cells.z.max(1.0) as u32,
-        );
-        Self::new(padded_lo, res, cell_size)
     }
 
     /// Returns the grid origin (the lower corner).
@@ -156,7 +115,6 @@ impl GridSpec {
 #[allow(clippy::unwrap_used, clippy::float_cmp, missing_docs)]
 mod tests {
     use super::*;
-    use crate::{PrimitiveShape, StrutSpec, UnitCell};
 
     #[test]
     fn new_accepts_valid_input() {
@@ -219,19 +177,5 @@ mod tests {
         assert_eq!(g.sample_index(0, 1, 0), 5); // stride_y = 5
         assert_eq!(g.sample_index(0, 0, 1), 25); // stride_z = 25
         assert_eq!(g.sample_index(4, 4, 4), 124);
-    }
-
-    #[test]
-    fn for_job_produces_valid_grid() {
-        let job = LatticeJob::new(
-            PrimitiveShape::cube(Vec3::splat(2.0)).unwrap(),
-            UnitCell::cubic(1.0).unwrap(),
-            StrutSpec::uniform(0.1).unwrap(),
-        )
-        .unwrap();
-        let g = GridSpec::for_job(&job, 0.1).unwrap();
-        // Primitive half-extent 2 → extent 4, padded to 4.2, cells = 42.
-        assert!(g.resolution().x >= 40);
-        assert!(g.cell_size() == 0.1);
     }
 }

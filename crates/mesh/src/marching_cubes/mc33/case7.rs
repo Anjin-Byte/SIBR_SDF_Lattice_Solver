@@ -49,7 +49,7 @@
 use super::super::{CellCoord, Mesh};
 use super::decider::{face_decider, interior_decider_per_edge};
 use super::emit_triangles;
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 
 /// Per-cfg 5-tuple: `[face_a, face_b, face_c, interior_s, ref_edge]`.
 ///
@@ -393,8 +393,8 @@ pub(super) fn emit(
 )]
 mod tests {
     use super::*;
-    use crate::mesh::Mesh;
-    use crate::mesh::grid::GridSpec;
+    use crate::Mesh;
+    use crate::grid::GridSpec;
     use glam::{UVec3, Vec3};
 
     fn unit_grid_with_corners(corners: &[f32; 8]) -> (GridSpec, Vec<f32>) {

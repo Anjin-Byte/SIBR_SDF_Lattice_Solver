@@ -15,11 +15,11 @@
 
 use glam::Vec3;
 use lattice_gen::{
-    GridSpec, LatticeJob, PrimitiveShape, Progress, StrutSpec, UnitCell,
-    mesh::{
-        ExtractionMethod, TaubinParams, export, mesh_with_progress, taubin_with_progress,
-        weld_by_position,
-    },
+    LatticeJob, PrimitiveShape, StrutSpec, UnitCell, grid_spec_for_job, lattice_body,
+};
+use mesh::{
+    ExtractionMethod, GridSpec, Progress, TaubinParams, export, mesh_with_progress,
+    taubin_with_progress, weld_by_position,
 };
 
 /// Counting spy mirroring the one in `src/progress.rs` tests.
@@ -72,10 +72,15 @@ fn full_pipeline_progress_is_well_formed_on_small_cubic_lattice() {
         StrutSpec::uniform(0.15).unwrap(),
     )
     .unwrap();
-    let grid = GridSpec::for_job(&job, 0.15).unwrap();
+    let grid = grid_spec_for_job(&job, 0.15).unwrap();
 
     let mut mesh_spy = Spy::default();
-    let mut mesh = mesh_with_progress(&job, &grid, ExtractionMethod::ClassicMc, &mut mesh_spy);
+    let mut mesh = mesh_with_progress(
+        &lattice_body(&job),
+        &grid,
+        ExtractionMethod::ClassicMc,
+        &mut mesh_spy,
+    );
     assert_well_formed(&mesh_spy, "mesh");
     assert!(mesh_spy.total > 0, "mesh stage declared zero work");
 
@@ -108,7 +113,12 @@ fn empty_mesh_through_export_still_produces_well_formed_progress() {
     let grid = GridSpec::new(Vec3::splat(100.0), glam::UVec3::splat(2), 0.1).unwrap();
 
     let mut mesh_spy = Spy::default();
-    let mut mesh = mesh_with_progress(&job, &grid, ExtractionMethod::ClassicMc, &mut mesh_spy);
+    let mut mesh = mesh_with_progress(
+        &lattice_body(&job),
+        &grid,
+        ExtractionMethod::ClassicMc,
+        &mut mesh_spy,
+    );
     assert_well_formed(&mesh_spy, "mesh(empty)");
 
     let mut export_spy = Spy::default();

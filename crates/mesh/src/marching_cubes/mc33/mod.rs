@@ -47,7 +47,7 @@ use glam::Vec3;
 
 use super::tables::EDGE_CORNERS;
 use super::{CellCoord, Mesh, case_index, classic, interpolate_edge, read_corner_values};
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 
 /// Computes the cube-interior "c-vertex" used by Chernyaev cases 6, 7,
 /// 10, 12, and 13 (Lewiner 7, 8, 11, 13, 14) when their triangulations

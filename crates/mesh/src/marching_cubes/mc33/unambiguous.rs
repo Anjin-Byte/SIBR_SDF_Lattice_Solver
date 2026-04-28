@@ -43,7 +43,7 @@ use glam::Vec3;
 
 use super::super::tables::EDGE_CORNERS;
 use super::super::{CellCoord, Mesh, interpolate_edge};
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 
 /// Source: Lewiner `tiling1[]`, 16 × 3 entries. Base case 2 (single corner).
 #[rustfmt::skip]
@@ -277,8 +277,8 @@ pub(super) fn emit(
 )]
 mod tests {
     use super::*;
-    use crate::mesh::Mesh;
-    use crate::mesh::grid::GridSpec;
+    use crate::Mesh;
+    use crate::grid::GridSpec;
     use glam::UVec3;
 
     /// Every edge index in every tiling must be in `0..=11`.

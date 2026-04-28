@@ -32,7 +32,7 @@ use glam::Vec3;
 use super::super::tables::EDGE_CORNERS;
 use super::super::{CellCoord, Mesh, interpolate_edge};
 use super::decider::face_decider;
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 
 /// For each Case-3 subcase (indexed by `subcase - 1`, since Lewiner's
 /// `cases` table stores subcase as 1-based), the face number to test.
@@ -195,8 +195,8 @@ pub(super) fn emit(
 )]
 mod tests {
     use super::*;
-    use crate::mesh::Mesh;
-    use crate::mesh::grid::GridSpec;
+    use crate::Mesh;
+    use crate::grid::GridSpec;
     use glam::UVec3;
 
     // --------------------------------------------------------------

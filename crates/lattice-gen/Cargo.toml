@@ -8,12 +8,23 @@ description = "SDF-based lattice generation. Unit cell topologies + Woodward's s
 
 [dependencies]
 sdf = { path = "../sdf" }
+# mesh is a downstream consumer crate; this dep is exclusively for the
+# `mesh::GridSpec` value type returned by `grid_spec_for_job`. lattice-gen
+# does not consume any mesh algorithms. See SDF_Lattice_Knowledge_Base/
+# Architecture/Patterns/Consumer Crates.md for the rationale.
+mesh = { path = "../mesh" }
 glam = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+# tests/meshing.rs exercises lattice_body() composed with mesh's marching cubes.
+# This is a lattice-gen integration test that happens to use mesh — keeping it
+# here (rather than splitting out the sphere-only cases into mesh's tests/)
+# is a deliberate scope choice for the migration. A future refactor can lift
+# the SDF-generic subset into crates/mesh/tests/.
+# (mesh is already a normal dep; no separate dev-dep needed.)
 
 [lints]
 workspace = true

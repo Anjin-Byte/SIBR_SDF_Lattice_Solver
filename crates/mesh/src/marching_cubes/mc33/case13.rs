@@ -74,7 +74,7 @@ use super::super::{CellCoord, Mesh};
 use super::compute_c_vertex;
 use super::decider::{face_decider, interior_decider_per_edge};
 use super::emit_triangles;
-use crate::mesh::grid::GridSpec;
+use crate::grid::GridSpec;
 #[cfg(test)]
 use glam::Vec3;
 
@@ -391,8 +391,8 @@ pub(super) fn emit(
 )]
 mod tests {
     use super::*;
-    use crate::mesh::Mesh;
-    use crate::mesh::grid::GridSpec;
+    use crate::Mesh;
+    use crate::grid::GridSpec;
     use glam::UVec3;
 
     /// Build a single-cell grid whose corner values match `corners` in

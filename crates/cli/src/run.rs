@@ -9,11 +9,13 @@ use std::io::BufWriter;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
-use lattice_gen::mesh::{
+use lattice_gen::{
+    LatticeError, LatticeJob, PrimitiveShape, StrutSpec, UnitCell, grid_spec_for_job, lattice_body,
+};
+use mesh::{
     ButterflyParams, ExtractionMethod, Format, TaubinParams, butterfly_with_progress, export,
     mesh_with_progress, taubin_with_progress, weld_by_position,
 };
-use lattice_gen::{GridSpec, LatticeError, LatticeJob, PrimitiveShape, StrutSpec, UnitCell};
 
 use crate::args::{Args, CellTopologyArg, ExtractionMethodArg, OutputFormat, PrimitiveKind};
 use crate::progress::Pipeline;
@@ -38,7 +40,7 @@ pub fn run(args: &Args, pipeline: &Pipeline) -> Result<()> {
 
     let grid_cell = resolve_grid_cell(args)?;
     let grid =
-        GridSpec::for_job(&job, grid_cell).with_context(|| format!("grid_cell = {grid_cell}"))?;
+        grid_spec_for_job(&job, grid_cell).with_context(|| format!("grid_cell = {grid_cell}"))?;
     tracing::info!(
         "grid: resolution = {:?}, cell = {} mm ({} sample points)",
         grid.resolution(),
@@ -53,9 +55,10 @@ pub fn run(args: &Args, pipeline: &Pipeline) -> Result<()> {
     };
     tracing::info!("extraction method: {method:?}");
 
+    let body = lattice_body(&job);
     let t0 = Instant::now();
     let mut mesh_bar = pipeline.stage("meshing");
-    let mut m = mesh_with_progress(&job, &grid, method, &mut mesh_bar);
+    let mut m = mesh_with_progress(&body, &grid, method, &mut mesh_bar);
     let elapsed = t0.elapsed();
     let unwelded_tris = m.triangle_count();
     let unwelded_verts = m.vertex_count();
@@ -77,7 +80,7 @@ pub fn run(args: &Args, pipeline: &Pipeline) -> Result<()> {
     let mut weld_bar = pipeline.spinner("welding");
     let tolerance = grid.cell_size() * 1e-4;
     weld_by_position(&mut m, tolerance);
-    lattice_gen::Progress::finish(&mut weld_bar);
+    mesh::Progress::finish(&mut weld_bar);
     tracing::info!(
         "welded: {} triangles, {} vertices ({} duplicates merged, {} degenerates dropped)",
         m.triangle_count(),

@@ -1,0 +1,24 @@
+[package]
+name = "mesh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "SDF -> triangle mesh: marching cubes, vertex welding, Taubin smoothing, butterfly subdivision, format encoders. SDF-generic consumer crate."
+
+[dependencies]
+sdf = { path = "../sdf" }
+glam = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[features]
+default = ["stl", "obj"]
+stl = []
+obj = []
+
+[lints]
+workspace = true

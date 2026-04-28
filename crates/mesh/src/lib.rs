@@ -1,8 +1,10 @@
-//! CPU-reference triangle meshing via Marching Cubes.
+//! SDF → triangle mesh: CPU-reference Marching Cubes, vertex welding, Taubin
+//! smoothing, butterfly subdivision, and feature-gated format encoders.
 //!
-//! This module implements the [CPU Reference Path](../../../SDF_Lattice_Knowledge_Base/Architecture/Patterns/CPU%20Reference%20Path.md)
-//! for lattice meshing: a slow-but-correct isosurface extraction that serves
-//! as the oracle for the later GPU implementation.
+//! This crate is an SDF-generic [Consumer Crate](../../../SDF_Lattice_Knowledge_Base/Architecture/Patterns/Consumer%20Crates.md):
+//! it depends only on [`sdf`] and operates on any `impl Sdf`. The lattice
+//! domain is one consumer; CSG trees, procedural fields, and any other SDF
+//! source can drive these algorithms equally well.
 //!
 //! # Extraction methods
 //!
@@ -28,9 +30,16 @@
 //!   library's public extraction API returns.
 //! - **Welding** ([`weld`]) deduplicates vertices that share a quantum
 //!   bucket and drops triangles that become degenerate after dedup.
-//!   CLI callers apply welding before STL export so downstream
-//!   consumers see a properly indexed mesh. The library's `mesh_with` /
-//!   `run` stay unwelded so callers retain explicit control.
+//!   Callers apply welding before export so downstream consumers see a
+//!   properly indexed mesh.
+//! - **Post-processing** ([`postprocess`]) groups the optional
+//!   mesh-quality stages: Taubin smoothing reduces noise without
+//!   shrinkage; butterfly subdivision densifies the mesh while
+//!   preserving original vertex positions. Each is independent — a
+//!   caller skips a stage simply by not invoking it.
+//! - **Export** ([`export`]) writes the welded mesh to a printer-friendly
+//!   format. STL and OBJ are gated behind the `stl` and `obj` Cargo
+//!   features (both default-on); 3MF is reserved for a future feature.
 //!
 //! # Other limitations (unchanged from earlier phases)
 //!
@@ -39,27 +48,38 @@
 //!   production version. For Woodward Fig. 4B-scale parts (~1M voxels),
 //!   this runs in seconds; for Fig. 4A-scale (~100M voxels), it is not
 //!   performant.
+//!
+//! # Precision contract
+//!
+//! Algorithms in this crate accept any `impl Sdf` — they require only
+//! `Sdf::eval`, never `BoundSdf` or `ExactSdf`. That is deliberate: the
+//! lattice-body composition propagates `Sdf`-only upward through smooth
+//! combinators, and consumers downstream of those combinators (Marching
+//! Cubes, slicing, rendering) only need point evaluation. See the vault's
+//! "SDF Primitives Catalog" bound-contamination section.
 
 pub mod export;
 pub mod grid;
 pub mod marching_cubes;
-pub mod smooth;
-pub mod subdivide;
+pub mod postprocess;
+pub mod progress;
 pub mod weld;
 
 pub use export::Format;
 pub use grid::GridSpec;
 pub use marching_cubes::ExtractionMethod;
-pub use smooth::{SmoothError, TaubinParams, taubin, taubin_with_progress};
-pub use subdivide::{ButterflyParams, butterfly, butterfly_with_progress};
+pub use postprocess::smooth::{SmoothError, TaubinParams, taubin, taubin_with_progress};
+pub use postprocess::subdivide::{ButterflyParams, butterfly, butterfly_with_progress};
+pub use progress::Progress;
 pub use weld::weld_by_position;
 
 use glam::Vec3;
+use sdf::Sdf;
 
 /// A triangle mesh produced by [`mesh`].
 ///
 /// Triangles are stored as index triples into `vertices`. No vertex welding
-/// is performed — see the module-level docs.
+/// is performed by extraction — see the module-level docs.
 #[derive(Debug, Clone, Default)]
 pub struct Mesh {
     /// Vertex positions.
@@ -85,33 +105,32 @@ impl Mesh {
     }
 }
 
-/// Meshes the lattice body for a validated job at the given grid resolution,
-/// using the caller-selected [`ExtractionMethod`].
+/// Meshes any SDF at the given grid resolution using the caller-selected
+/// [`ExtractionMethod`].
 ///
-/// Runs marching cubes on a dense voxel grid, evaluating the composed
-/// lattice-body SDF at every grid point. The output is an unwelded triangle
-/// list — see the module-level docs for limitations.
+/// Runs marching cubes on a dense voxel grid, evaluating `sdf` at every
+/// grid point. The output is an unwelded triangle list — see the
+/// module-level docs for limitations.
 ///
 /// # Performance
 ///
 /// This is the CPU reference implementation, single-threaded. Cost is
-/// `O(k · N³)` for an `N³`-resolution grid with `k` struts per cell. For
-/// Woodward Fig. 4B-scale parts (~200³ voxels), runs in seconds; for
-/// Fig. 4A-scale (~500³+ voxels), consider the production GPU path.
-pub fn mesh_with(job: &crate::LatticeJob, grid: &GridSpec, method: ExtractionMethod) -> Mesh {
-    mesh_with_progress(job, grid, method, &mut ())
+/// `O(N³ · sdf_eval)` for an `N³`-resolution grid. For Woodward Fig. 4B-scale
+/// parts (~200³ voxels), runs in seconds; for Fig. 4A-scale (~500³+ voxels),
+/// consider the production GPU path.
+pub fn mesh_with<S: Sdf>(sdf: &S, grid: &GridSpec, method: ExtractionMethod) -> Mesh {
+    mesh_with_progress(sdf, grid, method, &mut ())
 }
 
 /// Like [`mesh_with`], but reports progress to `progress`. See
 /// [`marching_cubes::run_with_progress`] for the tick schedule.
-pub fn mesh_with_progress(
-    job: &crate::LatticeJob,
+pub fn mesh_with_progress<S: Sdf, P: Progress>(
+    sdf: &S,
     grid: &GridSpec,
     method: ExtractionMethod,
-    progress: &mut impl crate::Progress,
+    progress: &mut P,
 ) -> Mesh {
-    let body = crate::lattice_body(job);
-    marching_cubes::run_with_progress(&body, grid, method, progress)
+    marching_cubes::run_with_progress(sdf, grid, method, progress)
 }
 
 /// Convenience wrapper around [`mesh_with`] that uses
@@ -119,8 +138,8 @@ pub fn mesh_with_progress(
 ///
 /// Preserves the signature used by earlier phases before MC33 selection
 /// landed.
-pub fn mesh(job: &crate::LatticeJob, grid: &GridSpec) -> Mesh {
-    mesh_with(job, grid, ExtractionMethod::default())
+pub fn mesh<S: Sdf>(sdf: &S, grid: &GridSpec) -> Mesh {
+    mesh_with(sdf, grid, ExtractionMethod::default())
 }
 
 #[cfg(test)]

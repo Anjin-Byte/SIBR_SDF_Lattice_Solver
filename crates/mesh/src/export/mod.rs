@@ -4,15 +4,25 @@
 //! takes a [`Mesh`](super::Mesh) and a `&mut impl Write`. The CLI (or other
 //! consumers) wire up a file handle to the chosen writer.
 //!
-//! # Supported formats
+//! # Supported formats (feature-gated)
 //!
 //! - [`stl`] — binary STL (the format `PreForm` and other slicers consume).
+//!   Behind the `stl` Cargo feature (default-on).
 //! - [`obj`] — Wavefront OBJ ASCII (the format every 3D viewer reads).
+//!   Behind the `obj` Cargo feature (default-on).
+//!
+//! The [`Format`] enum and [`Format::from_extension`] are always available
+//! regardless of which features are enabled — only the writer modules
+//! themselves are gated. Callers attempting to invoke a writer whose
+//! feature is disabled get a compile error pointing at the missing
+//! module path.
 //!
 //! Format selection is typically driven by file extension; see the CLI's
 //! `run::run` for the mapping.
 
+#[cfg(feature = "obj")]
 pub mod obj;
+#[cfg(feature = "stl")]
 pub mod stl;
 
 /// Which file format to write the mesh in.

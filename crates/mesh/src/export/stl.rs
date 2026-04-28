@@ -23,7 +23,7 @@ use std::io::{self, Write};
 
 use glam::Vec3;
 
-use crate::mesh::Mesh;
+use crate::Mesh;
 use crate::progress::Progress;
 
 /// Maximum triangle count representable in the binary STL header's u32 field.

@@ -13,7 +13,7 @@
 
 use std::io::{self, Write};
 
-use crate::mesh::Mesh;
+use crate::Mesh;
 use crate::progress::Progress;
 
 /// Lines per progress tick (combined vertex-line and face-line chunks).

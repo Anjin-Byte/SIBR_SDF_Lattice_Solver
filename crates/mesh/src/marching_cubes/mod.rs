@@ -388,42 +388,26 @@ mod tests {
         );
     }
 
-    /// Current workloads (smooth sphere, cubic-lattice of cylinders) do
-    /// not hit Lewiner base cases 4 (Chernyaev 3) or 5 (Chernyaev 4) —
-    /// these require locally-saddle surface geometry. The remaining
-    /// non-manifold edges on these workloads come from Lewiner cases
-    /// 7/8/11/13/14, still pending port. This test pins the empirical
-    /// finding so a future workload that DOES exercise Case 3/4 will
-    /// stand out.
+    /// Current sphere workload does not hit Lewiner base cases 4
+    /// (Chernyaev 3) or 5 (Chernyaev 4) — these require locally-saddle
+    /// surface geometry. The remaining non-manifold edges on this
+    /// workload come from Lewiner cases 7/8/11/13/14, still pending port.
+    /// This test pins the empirical finding so a future workload that
+    /// DOES exercise Case 3/4 will stand out.
+    ///
+    /// (Lattice-body equivalent test lives in `lattice-gen/tests/meshing.rs`
+    ///  where the `LatticeJob` types are in scope.)
     #[test]
-    fn diagnostic_current_workloads_do_not_hit_case3_or_case4() {
-        use crate::{LatticeJob, PrimitiveShape, StrutSpec, UnitCell, lattice_body};
-
+    fn diagnostic_sphere_does_not_hit_case3_or_case4() {
         let sphere = Sphere::new(1.0).unwrap();
         let sphere_grid = GridSpec::new(Vec3::splat(-2.0), UVec3::splat(30), 4.0 / 30.0).unwrap();
         let sphere_hist = case_histogram(&sphere, &sphere_grid);
         eprintln!("sphere @ 30^3 base-case histogram: {sphere_hist:?}");
 
-        let job = LatticeJob::new(
-            PrimitiveShape::cube(Vec3::splat(2.0)).unwrap(),
-            UnitCell::cubic(1.0).unwrap(),
-            StrutSpec::uniform(0.15).unwrap(),
-        )
-        .unwrap();
-        let lattice_grid = GridSpec::for_job(&job, 0.1).unwrap();
-        let body = lattice_body(&job);
-        let lattice_hist = case_histogram(&body, &lattice_grid);
-        eprintln!("cubic lattice base-case histogram: {lattice_hist:?}");
-
         // Base case 4 = Chernyaev 3 (face-ambiguous, Session 1 port).
         // Base case 5 = Chernyaev 4 (body-ambiguous, Session 2 port).
-        // Both are zero on current workloads — the port is correct but
-        // inert here until we either (a) port Cases 7/8/11/13/14 or
-        // (b) introduce an adversarial fixture.
         assert_eq!(sphere_hist[4], 0, "sphere hit Case 3 — workload changed");
         assert_eq!(sphere_hist[5], 0, "sphere hit Case 4 — workload changed");
-        assert_eq!(lattice_hist[4], 0, "lattice hit Case 3 — workload changed");
-        assert_eq!(lattice_hist[5], 0, "lattice hit Case 4 — workload changed");
     }
 
     // --------------------------------------------------------------
